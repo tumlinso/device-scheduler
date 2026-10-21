@@ -7,9 +7,12 @@ from pathlib import Path
 
 import pytest
 
+from device_scheduler_adapters import Ledger
+from device_scheduler_core import Resource, ResourceAllocator
 from device_scheduler_mcp.kda_bridge import (
     BridgeRefusal,
     _controller_request,
+    _configured_requirements,
     _normalize_job,
     _persist_job_logs,
     run_request,
@@ -191,3 +194,45 @@ def test_scheduler_logs_are_persisted_with_hashes_and_truncation_evidence(tmp_pa
     assert evidence["stdout_sha256"]
     assert evidence["stdout_truncated"] is False
     assert evidence["stderr_truncated"] is True
+
+
+def test_bridge_gpu_alias_matches_real_nvidia_capacity_and_uuid_selector(tmp_path: Path) -> None:
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    config = _config(tmp_path)
+    gpu = _configured_requirements(config["resource_requirements"])[0]
+
+    # The bridge accepts the public gpu_memory_bytes spelling, then binds it
+    # to the NVIDIA adapter's actual memory_bytes capacity field. The stable
+    # UUID selector resolves against Resource.attributes["uuid"].
+    assert gpu.quantities == {"memory_bytes": 3_000_000_000}
+    assert gpu.selectors == {"uuid": "GPU-11111111-1111-1111-1111-111111111111"}
+    ledger = Ledger(tmp_path / "scheduler.sqlite3")
+    allocator = ResourceAllocator(ledger, clock=lambda: now)
+    resource = Resource(
+        "gpu:host-a:GPU-11111111-1111-1111-1111-111111111111",
+        "host-a",
+        "gpu",
+        {"memory_bytes": 16 * 1024**3},
+        attributes={
+            "uuid": "GPU-11111111-1111-1111-1111-111111111111",
+            "inventory_observed_at": now.isoformat(),
+            "process_observed_at": now.isoformat(),
+            "memory_free_bytes_observation": 16 * 1024**3,
+            "process_telemetry": "compute-apps-visible",
+            "process_telemetry_state": "observed",
+            "process_count_observation": 0,
+            "process_identity_unknown_count": 0,
+            "unmanaged_process_count": 0,
+            "managed_process_ids": [],
+        },
+        conflict_domains=frozenset({"gpu-exclusive:host-a:GPU-11111111-1111-1111-1111-111111111111"}),
+    )
+    allocator.register_resource(resource, source_adapter_id="nvidia-test", observed_at=now)
+
+    placement = allocator.preview_allocation((gpu,))
+
+    assert len(placement) == 1
+    assert placement[0].resource_id == resource.resource_id
+    assert placement[0].quantities == {"memory_bytes": 3_000_000_000}

@@ -1,0 +1,5 @@
+# Intentionally empty until a llama.cpp launch profile, pinned model identity,
+# and trusted FrameShift admission controller have been verified.
+[backend_profiles]
+
+[frameshift_controls]

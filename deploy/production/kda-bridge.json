@@ -1,0 +1,20 @@
+{
+  "device_scheduler": {
+    "base_url": "http://127.0.0.1:8770",
+    "token_file": "~/.config/device-scheduler/kda.token",
+    "owner_id": "kda",
+    "execution_roots": ["/home/tumlinson/kda"],
+    "max_priority": 70,
+    "priority": 70,
+    "priority_class": "interactive",
+    "resource_requirements": [
+      {
+        "kind": "gpu",
+        "quantities": {"gpu_memory_bytes": 12884901888},
+        "selectors": {"uuid": "REPLACE_WITH_VERIFIED_ISOLATED_GPU_UUID"},
+        "mode": "exclusive",
+        "same_host": true
+      }
+    ]
+  }
+}

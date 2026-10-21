@@ -31,7 +31,7 @@ import threading
 import time
 import traceback
 import uuid
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, Sequence
 from urllib.request import Request, urlopen
 
 import httpx
@@ -477,11 +477,6 @@ def capture_source_identity(
         path.relative_to(fs_root).as_posix(): _sha256_file(path)
         for path in sorted((fs_root / "frameshift").rglob("*.py"))
     }
-
-
-def _source_identity_matches(before: Mapping[str, Any], after: Mapping[str, Any]) -> bool:
-    """Require unchanged code/runtime identities over the live daemon interval."""
-    return dict(before) == dict(after)
     if not frameshift_hashes:
         raise QualificationError("FrameShift source identity is empty")
     try:
@@ -523,11 +518,41 @@ def _source_identity_matches(before: Mapping[str, Any], after: Mapping[str, Any]
     }
 
 
+def _source_identity_matches(before: Mapping[str, Any], after: Mapping[str, Any]) -> bool:
+    """Require unchanged code/runtime identities over the live daemon interval."""
+    return dict(before) == dict(after)
+
+
 def _resource_data(value: Any) -> dict[str, Any]:
     raw = value.to_dict() if hasattr(value, "to_dict") else value
     if not isinstance(raw, Mapping):
         raise QualificationError("NVIDIA adapter returned an invalid resource record")
     return dict(raw)
+
+
+def _select_scheduler_gpu_resource(
+    response: Mapping[str, Any], gpu_uuid: str
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Select one available GPU from resources.list status envelopes."""
+    rows = response.get("resources")
+    if isinstance(rows, (str, bytes)) or not isinstance(rows, Sequence):
+        raise QualificationError("Device Scheduler resource listing had an invalid shape")
+    matches: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, Mapping) or not isinstance(row.get("resource"), Mapping):
+            raise QualificationError("Device Scheduler resource listing omitted a resource status envelope")
+        resource = row["resource"]
+        attributes = resource.get("attributes")
+        if isinstance(attributes, Mapping) and attributes.get("uuid") == gpu_uuid:
+            matches.append(dict(row))
+    if len(matches) != 1:
+        raise QualificationError("Device Scheduler did not discover exactly the grant's GPU UUID")
+    status = matches[0]
+    if status.get("available") is not True:
+        reason = status.get("availability_reason")
+        suffix = f": {reason}" if isinstance(reason, str) and reason else ""
+        raise QualificationError(f"Device Scheduler reports the grant's GPU unavailable{suffix}")
+    return dict(status["resource"]), status
 
 
 def gpu_snapshot(uuid_value: str) -> dict[str, Any]:
@@ -623,15 +648,16 @@ def _frameshift_runtime(
 ) -> tuple[Any, Any, Any, dict[str, str]]:
     from frameshift import (
         ActionKind, AgentType, CapabilityGrant, Engine, FrameBudget, Lifecycle,
-        ModelBinding, ProposedAction, Registry, Toolkit, TypedPayload,
+        ModelBinding, ProposedAction, Registry, TypedPayload,
     )
     from frameshift.backends.llama import LlamaCppHTTPProvider
     from frameshift.service import FrameShiftService
     from frameshift.client import FrameShiftClient
+    from frameshift.models import PayloadCodec, Toolkit
 
     registry = Registry()
     registry.register_codec(
-        __import__("frameshift.models", fromlist=["PayloadCodec"]).PayloadCodec(
+        PayloadCodec(
             "qualification.prompt", "1", "text", count_tokens=_count_tokens,
             encode=functools.partial(
                 _encode_qualification_context, gpu_uuid=gpu_uuid, handoff_id=handoff_id,
@@ -724,11 +750,12 @@ def _write_scheduler_configuration(
         f"port = {port}\ntick_interval_seconds = 0.1\nhttp_timeout_seconds = 30.0\n\n"
         "[paths]\n"
         f"state_directory = {_toml_string(str(state_dir))}\n"
-        f"token_directory = {_toml_string(str(token_dir))}\n"
-        f"token_file = {_toml_string(str(token_file))}\n"
         f"profiles_path = {_toml_string(str(work / 'profiles.toml'))}\n"
         f"backend_profiles_path = {_toml_string(str(work / 'backend-profiles.toml'))}\n"
-        f"continuations_path = {_toml_string(str(work / 'continuations.toml'))}\n"
+        f"continuations_path = {_toml_string(str(work / 'continuations.toml'))}\n\n"
+        "[auth]\n"
+        f"token_directory = {_toml_string(str(token_dir))}\n"
+        f"token_file = {_toml_string(str(token_file))}\n"
     ))
     execution = work / "profiles.toml"
     argv = [
@@ -839,6 +866,129 @@ def _mapping(value: Any, label: str) -> dict[str, Any]:
     return dict(value)
 
 
+def _backend_execution_handle(record: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Find only a core ExecutionHandle persisted directly or in its receipt."""
+    candidates: list[Any] = [record.get("execution_handle")]
+    observation = record.get("observation")
+    if isinstance(observation, Mapping):
+        candidates.append(observation.get("execution_handle"))
+        nested = observation.get("observation")
+        if isinstance(nested, Mapping):
+            candidates.append(nested.get("execution_handle"))
+    for candidate in candidates:
+        if not isinstance(candidate, Mapping):
+            continue
+        try:
+            ExecutionHandle.from_dict(candidate)
+        except (TypeError, ValueError):
+            continue
+        return dict(candidate)
+    return None
+
+
+async def _wait_backend_ready(
+    client: Any,
+    backend_id: str,
+    start_response: Mapping[str, Any],
+    *,
+    timeout_seconds: float = 300.0,
+    poll_interval_seconds: float = 0.5,
+    on_record: Callable[[Mapping[str, Any]], None] | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Poll asynchronous start state and preserve every handle observed."""
+    if timeout_seconds <= 0 or poll_interval_seconds <= 0:
+        raise ValueError("backend readiness timeout and poll interval must be positive")
+    latest = _mapping(start_response, "backend start response")
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        if on_record is not None:
+            on_record(latest)
+        handle = _backend_execution_handle(latest)
+        state = str(latest.get("state", "unknown")).casefold()
+        if state == "ready" and handle is not None:
+            return latest, handle
+        if state in {"failed", "blocked", "stopped", "cancelled"}:
+            raise QualificationError(f"managed backend entered {state!r} during startup")
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError(
+                f"managed backend did not reach ready with a durable execution handle within {timeout_seconds:g}s"
+            )
+        await asyncio.sleep(min(poll_interval_seconds, remaining))
+        latest = _mapping(
+            await client.call("backends.get", {"backend_id": backend_id}),
+            "backend readiness poll",
+        )
+
+
+async def _reconcile_backend_on_failure(
+    client: Any,
+    backend_id: str,
+    known_handle: Mapping[str, Any] | None,
+    *,
+    cleanup_allowed: bool,
+    report: dict[str, Any],
+    cancel: Callable[..., Mapping[str, Any]] | None = None,
+) -> dict[str, Any] | None:
+    """Refresh durable backend identity and optionally stop an unattached fixture."""
+    latest: dict[str, Any] | None = None
+    try:
+        latest = _mapping(
+            await client.call("backends.get", {"backend_id": backend_id}),
+            "backend record during failure cleanup",
+        )
+        if latest.get("backend_id", latest.get("id")) != backend_id:
+            raise QualificationError("backend failure inspection returned a different backend identity")
+        report["backend_record_at_failure"] = latest
+    except Exception as exc:
+        report["backend_record_at_failure_error"] = f"{type(exc).__name__}: {str(exc)[:300]}"
+
+    handle = _backend_execution_handle(latest) if latest is not None else None
+    if handle is None and isinstance(known_handle, Mapping):
+        try:
+            ExecutionHandle.from_dict(known_handle)
+            handle = dict(known_handle)
+        except (TypeError, ValueError):
+            handle = None
+
+    cleanup_record: dict[str, Any] = {
+        "backend_id": backend_id,
+        "attempted": False,
+        "cleanup_allowed": cleanup_allowed,
+        "execution_handle": handle,
+    }
+    if not cleanup_allowed:
+        cleanup_record["reason"] = "FrameShift spawn or consumer attachment may have occurred"
+    elif handle is None:
+        cleanup_record["state"] = "unknown"
+        cleanup_record["reason"] = "no verified execution handle was available for exact-unit cleanup"
+    else:
+        try:
+            handle_model = ExecutionHandle.from_dict(handle)
+            if cancel is None:
+                adapter = SystemdExecutionAdapter()
+                cancel = adapter.cancel
+            receipt = await asyncio.to_thread(
+                cancel,
+                handle_model,
+                operation_id=f"qualification-early-cleanup:{backend_id}",
+                timeout_seconds=30,
+            )
+            if not isinstance(receipt, Mapping):
+                raise QualificationError("systemd early-cleanup receipt was not an object")
+            cleanup_record["attempted"] = True
+            cleanup_record["receipt"] = dict(receipt)
+            cleanup_record["state"] = "complete" if receipt.get("cleanup_verified") is True else "unknown"
+        except Exception as exc:
+            cleanup_record.update({
+                "attempted": True,
+                "state": "unknown",
+                "error": f"{type(exc).__name__}: {str(exc)[:300]}",
+            })
+    report["early_backend_cleanup"] = cleanup_record
+    return handle
+
+
 def _fs_result_kind(result: Mapping[str, Any]) -> str:
     action = result.get("action")
     if not isinstance(action, Mapping):
@@ -899,6 +1049,8 @@ async def execute_qualification(args: argparse.Namespace, guard: ParentGrantGuar
     handoff_id = "qualification-handoff-" + uuid.uuid4().hex[:12]
     frame_id = str(uuid.uuid4())
     backend_handle: dict[str, Any] | None = None
+    backend_start_attempted = False
+    frame_spawn_attempted = False
     attached = False
     handoff_state: str | None = None
     cleanup_safe = False
@@ -984,14 +1136,13 @@ async def execute_qualification(args: argparse.Namespace, guard: ParentGrantGuar
         report["checks"]["private_daemon_healthy"] = True
 
         resources_response = await ds_client.call("resources.list")
-        resources = resources_response.get("resources", [])
-        selected = [item for item in resources if item.get("attributes", {}).get("uuid") == gpu_uuid]
-        if len(selected) != 1 or selected[0].get("kind", "").casefold() not in {"gpu", "nvidia_gpu", "cuda_gpu"}:
-            raise QualificationError("Device Scheduler did not discover exactly the grant's GPU UUID")
-        resource = selected[0]
+        resource, resource_status = _select_scheduler_gpu_resource(resources_response, gpu_uuid)
+        if resource.get("kind", "").casefold() not in {"gpu", "nvidia_gpu", "cuda_gpu"}:
+            raise QualificationError("Device Scheduler grant UUID did not resolve to a GPU resource")
         if resource.get("resource_id") != before["resource_id"]:
             raise QualificationError("Device Scheduler and NVIDIA snapshot disagree on the granted GPU identity")
         report["scheduler_gpu_resource"] = resource
+        report["scheduler_gpu_resource_status"] = resource_status
         report["checks"]["scheduler_discovered_exact_uuid"] = True
 
         backend_spec = {
@@ -1024,10 +1175,25 @@ async def execute_qualification(args: argparse.Namespace, guard: ParentGrantGuar
 
         scheduler_client = FrameShiftSchedulerClient(fs_config["base_url"], fs_scheduler_token, timeout=10)
         guard.verify(force=True)
+        backend_start_attempted = True
         started = await ds_client.call("backends.control", {"backend_id": backend_id, "action": "start"})
-        if started.get("state") != "ready" or not isinstance(started.get("execution_handle"), Mapping):
-            raise QualificationError("Device Scheduler did not return a ready backend and durable execution handle")
-        backend_handle = dict(started["execution_handle"])
+        report["backend_start_response"] = started
+
+        def remember_backend_record(record: Mapping[str, Any]) -> None:
+            nonlocal backend_handle
+            report["latest_backend_start_record"] = dict(record)
+            observed_handle = _backend_execution_handle(record)
+            if observed_handle is not None:
+                backend_handle = observed_handle
+
+        started, backend_handle = await _wait_backend_ready(
+            ds_client,
+            backend_id,
+            started,
+            timeout_seconds=300,
+            poll_interval_seconds=0.5,
+            on_record=remember_backend_record,
+        )
         initial_invocation = (backend_handle.get("metadata") or {}).get("invocation_id")
         if not initial_invocation:
             raise QualificationError("managed backend execution handle omitted its invocation identity")
@@ -1049,6 +1215,7 @@ async def execute_qualification(args: argparse.Namespace, guard: ParentGrantGuar
         report["checks"]["backend_started_and_ready"] = True
         report["checks"]["backend_weights_resident"] = True
 
+        frame_spawn_attempted = True
         frame = await asyncio.to_thread(frame_client.spawn, AGENT_TYPE_ID,
             "Request the one registered CUDA probe, then use its durable result to finish this qualification turn.",
             grant_id="qualification-grant", frame_id=frame_id,
@@ -1311,6 +1478,22 @@ async def execute_qualification(args: argparse.Namespace, guard: ParentGrantGuar
         # temporary services and stop a backend when its continuation was revoked
         # and the complete handoff restored it. Otherwise the parent operator keeps
         # the grant and diagnostic ledger for explicit recovery.
+        if backend_start_attempted and ds_client is not None and report.get("status") != "passed":
+            try:
+                backend_handle = await _reconcile_backend_on_failure(
+                    ds_client,
+                    backend_id,
+                    backend_handle,
+                    cleanup_allowed=(
+                        not frame_spawn_attempted
+                        and not attached
+                        and handoff_state is None
+                        and not cleanup_safe
+                    ),
+                    report=report,
+                )
+            except Exception as exc:
+                report["backend_failure_reconciliation_error"] = f"{type(exc).__name__}: {str(exc)[:300]}"
         if cleanup_safe and attached is False and handoff_state == "complete" and backend_handle is not None:
             report["manual_fixture_cleanup"]["ledger_backend_state_after_manual_stop"] = "ready (historical; no production stop route invoked)"
         if daemon is not None and daemon.poll() is None:

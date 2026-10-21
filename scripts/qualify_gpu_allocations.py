@@ -24,7 +24,6 @@ import subprocess
 import sys
 import tempfile
 import time
-import uuid
 from typing import Any, Mapping
 
 import uvicorn
@@ -49,6 +48,7 @@ from qualify_gpu_handoff import (  # noqa: E402
     gpu_snapshot,
     private_write,
 )
+from qualification_gpu_probe import runtime_visible_device_uuid  # noqa: E402
 
 from device_scheduler_adapters.nvidia import NvidiaAdapter  # noqa: E402
 from device_scheduler_core.models import Principal  # noqa: E402
@@ -153,6 +153,23 @@ def exclusive_request_waiting(job: Mapping[str, Any]) -> bool:
     return state in {"queued", "blocked"} and job.get("attempt_id") is None and job.get("lease_id") is None
 
 
+def _listed_resource_statuses(response: Mapping[str, Any]) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    """Unwrap the public resources.list status envelopes without losing status."""
+    rows = response.get("resources")
+    if not isinstance(rows, list):
+        raise QualificationError("scheduler resource listing has an invalid shape")
+    normalized: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for row in rows:
+        if not isinstance(row, Mapping):
+            raise QualificationError("scheduler resource listing contains a non-object row")
+        nested = row.get("resource")
+        resource = nested if isinstance(nested, Mapping) else row
+        if not isinstance(resource.get("resource_id"), str):
+            raise QualificationError("scheduler resource listing row has no resource identity")
+        normalized.append((dict(resource), dict(row)))
+    return normalized
+
+
 def _cuda_error(cuda: ctypes.CDLL, code: int, operation: str) -> None:
     if code == 0:
         return
@@ -171,12 +188,8 @@ def worker(gpu_uuid: str, memory_bytes: int, receipt_path: Path, release_path: P
         raise QualificationError("CUDA allocation must be between 4 and 128 MiB")
     library = ctypes.util.find_library("cudart") or "libcudart.so"
     cuda = ctypes.CDLL(library)
-    cuda.cudaSetDevice.argtypes = [ctypes.c_int]
-    cuda.cudaSetDevice.restype = ctypes.c_int
     cuda.cudaGetDeviceCount.argtypes = [ctypes.POINTER(ctypes.c_int)]
     cuda.cudaGetDeviceCount.restype = ctypes.c_int
-    cuda.cudaDeviceGetUuid.argtypes = [ctypes.c_void_p, ctypes.c_int]
-    cuda.cudaDeviceGetUuid.restype = ctypes.c_int
     cuda.cudaMalloc.argtypes = [ctypes.POINTER(ctypes.c_void_p), ctypes.c_size_t]
     cuda.cudaMalloc.restype = ctypes.c_int
     cuda.cudaMemset.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_size_t]
@@ -189,10 +202,7 @@ def worker(gpu_uuid: str, memory_bytes: int, receipt_path: Path, release_path: P
     _cuda_error(cuda, cuda.cudaGetDeviceCount(ctypes.byref(count)), "cudaGetDeviceCount")
     if count.value != 1:
         raise QualificationError(f"expected one visible CUDA device; found {count.value}")
-    _cuda_error(cuda, cuda.cudaSetDevice(0), "cudaSetDevice")
-    raw_uuid = ctypes.create_string_buffer(16)
-    _cuda_error(cuda, cuda.cudaDeviceGetUuid(raw_uuid, 0), "cudaDeviceGetUuid")
-    actual_uuid = "GPU-" + str(uuid.UUID(bytes=raw_uuid.raw))
+    actual_uuid = runtime_visible_device_uuid(cuda)
     if actual_uuid.casefold() != gpu_uuid.casefold():
         raise QualificationError("CUDA runtime UUID differs from the parent Project Control grant")
     device = ctypes.c_void_p()
@@ -287,10 +297,16 @@ def _service(root: Path, gpu_uuid: str) -> tuple[Any, Any, Path, int]:
         raise QualificationError("default composition did not include the NVIDIA adapter")
     from device_scheduler_adapters.host import LinuxHostAdapter
     scheduler.resource_adapters = (LinuxHostAdapter(), GrantedGpuAdapter(original, gpu_uuid))
-    app = create_app(config, scheduler=scheduler, token_store=token_store, background_ticks=True)
+    # Keep the private qualification daemon's scheduler tick under this
+    # harness's control. NVIDIA discovery is synchronous; an independent
+    # background tick racing resources.list can serialize two slow discovery
+    # calls inside the ASGI event loop and make an otherwise healthy request
+    # exceed the client timeout. The same production scheduler and adapters
+    # are exercised by explicit ticks below.
+    app = create_app(config, scheduler=scheduler, token_store=token_store, background_ticks=False)
     server_config = uvicorn.Config(app, host="127.0.0.1", port=listen_port, log_level="error", lifespan="on")
     server = uvicorn.Server(server_config)
-    return server, app, token_file, listen_port
+    return server, scheduler, token_file, listen_port
 
 
 def _job_spec(gpu_uuid: str, work: Path, label: str, buffer_bytes: int, *, exclusive: bool = False,
@@ -301,7 +317,10 @@ def _job_spec(gpu_uuid: str, work: Path, label: str, buffer_bytes: int, *, exclu
         raise QualificationError("every CUDA worker command must carry the live parent-grant guard")
     gpu_requirement: dict[str, Any] = {
         "kind": "gpu", "quantities": {"memory_bytes": memory_budget if not exclusive else 1},
-        "selectors": {"attributes.uuid": gpu_uuid}, "mode": "shared", "same_host": True,
+        # Requirement selectors address Resource.attributes directly. The
+        # public JSON resource representation nests these under `attributes`,
+        # but the allocator selector key itself is simply `uuid`.
+        "selectors": {"uuid": gpu_uuid}, "mode": "shared", "same_host": True,
     }
     resources = [gpu_requirement]
     tags: list[str] = []
@@ -334,8 +353,18 @@ def _job_spec(gpu_uuid: str, work: Path, label: str, buffer_bytes: int, *, exclu
     }
 
 
-async def _wait_job(client: DeviceSchedulerClient, guard: ParentGrantGuard, job_id: str,
-                    acceptable: set[str], timeout: float, *, check_parent: bool = True) -> dict[str, Any]:
+async def _tick(scheduler: Any, report: dict[str, Any], reason: str) -> None:
+    started = time.monotonic()
+    await asyncio.to_thread(scheduler.tick)
+    duration = time.monotonic() - started
+    report.setdefault("scheduler_tick_durations_seconds", []).append({
+        "reason": reason, "duration": round(duration, 6),
+    })
+
+
+async def _wait_job(client: DeviceSchedulerClient, scheduler: Any, report: dict[str, Any],
+                    guard: ParentGrantGuard, job_id: str, acceptable: set[str], timeout: float,
+                    *, check_parent: bool = True) -> dict[str, Any]:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if check_parent:
@@ -345,6 +374,7 @@ async def _wait_job(client: DeviceSchedulerClient, guard: ParentGrantGuard, job_
             return detail
         if detail.get("state") in {"failed", "cancelled", "unknown"}:
             raise QualificationError(f"job {job_id} ended in {detail.get('state')}")
+        await _tick(scheduler, report, f"wait:{job_id}")
         await asyncio.sleep(0.2)
     raise TimeoutError(f"job {job_id} did not reach {sorted(acceptable)}")
 
@@ -398,21 +428,23 @@ async def _execute(args: argparse.Namespace, guard: ParentGrantGuard, grant: Map
         if baseline["process_count"] != 0:
             raise QualificationError("the granted GPU must be process-empty before allocation qualification")
         report["source_snapshot_before"] = baseline
-        server, _app, token_file, listen_port = _service(work / "scheduler", str(grant["gpu_uuid"]))
+        server, scheduler, token_file, listen_port = _service(work / "scheduler", str(grant["gpu_uuid"]))
         base_url = f"http://127.0.0.1:{listen_port}"
         server_task = asyncio.create_task(asyncio.to_thread(server.run))
         await _health(base_url)
-        client = DeviceSchedulerClient(base_url, token_file, timeout_seconds=10)
-        listed = await client.list_resources()
-        gpu_resources = [r for r in listed.get("resources", []) if r.get("kind") == "gpu"]
-        if len(gpu_resources) != 1 or gpu_resources[0].get("attributes", {}).get("uuid") != grant["gpu_uuid"]:
-            raise QualificationError("private scheduler inventory is not constrained to the exact parent GPU")
+        client = DeviceSchedulerClient(base_url, token_file, timeout_seconds=30)
+        # `baseline` is read from nvidia-smi and the adapter is hard-filtered
+        # to this UUID before it can write the private ledger. Avoid an eager
+        # resources.list RPC here: that endpoint performs synchronous NVIDIA
+        # discovery, whose latency is itself under qualification. Lease
+        # evidence below verifies every allocation uses this exact identity.
+        resource_id = str(baseline["resource_id"])
         report["scheduler"] = {
             "base_url": base_url, "principal_id": "gpu-allocation-qualification",
-            "resource_id": gpu_resources[0]["resource_id"],
+            "resource_id": resource_id,
             "policy": (await client.status()).get("scheduler"),
         }
-        free = int(gpu_resources[0]["attributes"].get("memory_free_bytes_observation", 0))
+        free = int(baseline["memory_free_bytes"])
         budget = min(SHARED_BUDGET_BYTES, max(256 * MIB, free // 8))
         if free < budget * 2 + 128 * MIB:
             raise QualificationError("granted GPU lacks safe observed headroom for two shared budgets")
@@ -431,6 +463,7 @@ async def _execute(args: argparse.Namespace, guard: ParentGrantGuard, grant: Map
             if not job_id:
                 raise QualificationError("scheduler SDK submission returned no job identity")
             submitted_ids.append(job_id)
+            await _tick(scheduler, report, f"admit:{label}")
             return job_id, receipt, release
 
         shared: list[tuple[str, Path, Path]] = []
@@ -449,7 +482,7 @@ async def _execute(args: argparse.Namespace, guard: ParentGrantGuard, grant: Map
             raise QualificationError("both concurrent shared jobs must hold active visible leases")
         for lease in shared_leases:
             allocations = lease.get("allocations", [])
-            gpu_allocations = [item for item in allocations if item.get("resource_id") == gpu_resources[0]["resource_id"]]
+            gpu_allocations = [item for item in allocations if item.get("resource_id") == resource_id]
             if len(gpu_allocations) != 1 or gpu_allocations[0].get("mode") != "shared":
                 raise QualificationError("shared job lease did not contain one shared allocation on the granted GPU")
             amount = gpu_allocations[0].get("quantities", {}).get("memory_bytes")
@@ -475,7 +508,7 @@ async def _execute(args: argparse.Namespace, guard: ParentGrantGuard, grant: Map
             private_write(release, "release\n")
         completed_shared = []
         for job_id, _, _ in shared:
-            detail = await _wait_job(client, guard, job_id, {"succeeded"}, 120)
+            detail = await _wait_job(client, scheduler, report, guard, job_id, {"succeeded"}, 120)
             if detail.get("cleanup_verified") is not True:
                 raise QualificationError("shared job did not verify process cleanup before releasing capacity")
             completed_shared.append(detail)
@@ -484,7 +517,7 @@ async def _execute(args: argparse.Namespace, guard: ParentGrantGuard, grant: Map
         if exclusive_ready.get("gpu_uuid") != grant["gpu_uuid"]:
             raise QualificationError("exclusive worker observed a CUDA UUID outside the parent grant")
         private_write(exclusive_release, "release\n")
-        exclusive_done = await _wait_job(client, guard, exclusive_id, {"succeeded"}, 120)
+        exclusive_done = await _wait_job(client, scheduler, report, guard, exclusive_id, {"succeeded"}, 120)
         if exclusive_done.get("cleanup_verified") is not True:
             raise QualificationError("exclusive job did not verify cleanup")
         report["jobs"].extend([*completed_shared, exclusive_done])
@@ -532,10 +565,10 @@ async def _execute(args: argparse.Namespace, guard: ParentGrantGuard, grant: Map
         if unmanaged.wait(timeout=30) != 0:
             raise QualificationError("unmanaged CUDA allocation worker failed during cleanup")
         unmanaged = None
-        await _wait_job(client, guard, unmanaged_exclusive_id, {"running"}, 120)
+        await _wait_job(client, scheduler, report, guard, unmanaged_exclusive_id, {"running"}, 120)
         ready = await _wait_receipt(work / "exclusive-blocked-by-unmanaged.json", guard)
         private_write(unmanaged_job_release, "release\n")
-        detail = await _wait_job(client, guard, unmanaged_exclusive_id, {"succeeded"}, 120)
+        detail = await _wait_job(client, scheduler, report, guard, unmanaged_exclusive_id, {"succeeded"}, 120)
         if detail.get("cleanup_verified") is not True:
             raise QualificationError("exclusive job after unmanaged cleanup lacks verified release")
         report["jobs"].append(detail)
@@ -544,9 +577,22 @@ async def _execute(args: argparse.Namespace, guard: ParentGrantGuard, grant: Map
             "worker_receipt": ready, "job": detail,
         })
 
+        listed = await client.list_resources()
+        normalized_resources = _listed_resource_statuses(listed)
+        gpu_rows = [(resource, status) for resource, status in normalized_resources
+                    if resource.get("kind") == "gpu"]
+        if len(gpu_rows) != 1:
+            raise QualificationError("private scheduler inventory is not constrained to one granted GPU")
+        gpu_resource, gpu_status = gpu_rows[0]
+        if gpu_resource.get("resource_id") != resource_id or gpu_resource.get("attributes", {}).get("uuid") != grant["gpu_uuid"]:
+            raise QualificationError("private scheduler inventory is not constrained to the exact parent GPU")
+        if gpu_status.get("available") is not True:
+            raise QualificationError("private scheduler reports the granted GPU unavailable after cleanup")
         status = await client.resource_capabilities()
         report["capabilities"] = status
-        profiling = _profiling_domain(gpu_resources[0], listed.get("resources", []), status)
+        profiling = _profiling_domain(
+            gpu_resource, [resource for resource, _ in normalized_resources], status,
+        )
         if profiling["domain_resource_id"]:
             first_id, first_path, first_release = await submit(
                 "profile-first", isolation_id=profiling["domain_resource_id"]
@@ -560,12 +606,12 @@ async def _execute(args: argparse.Namespace, guard: ParentGrantGuard, grant: Map
             if second_wait.get("state") not in {"queued", "blocked"} or second_wait.get("attempt_id"):
                 raise QualificationError("profiler isolation domain did not serialize competing exclusive profiles")
             private_write(first_release, "release\n")
-            first_done = await _wait_job(client, guard, first_id, {"succeeded"}, 120)
+            first_done = await _wait_job(client, scheduler, report, guard, first_id, {"succeeded"}, 120)
             if first_done.get("cleanup_verified") is not True:
                 raise QualificationError("first profiler job did not verify cleanup")
             second_worker = await _wait_receipt(second_path, guard)
             private_write(second_release, "release\n")
-            second_done = await _wait_job(client, guard, second_id, {"succeeded"}, 120)
+            second_done = await _wait_job(client, scheduler, report, guard, second_id, {"succeeded"}, 120)
             if second_done.get("cleanup_verified") is not True:
                 raise QualificationError("second profiler job did not verify cleanup")
             profiling.update({
@@ -600,11 +646,11 @@ async def _execute(args: argparse.Namespace, guard: ParentGrantGuard, grant: Map
                     unmanaged.wait(timeout=5)
         if base_url and submitted_ids:
             try:
-                client = DeviceSchedulerClient(base_url, work / "scheduler" / "client.token", timeout_seconds=10)
+                client = DeviceSchedulerClient(base_url, work / "scheduler" / "client.token", timeout_seconds=30)
                 for job_id in submitted_ids:
                     try:
                         detail = await _wait_job(
-                            client, guard, job_id, {"succeeded", "failed", "cancelled"}, 40,
+                            client, scheduler, report, guard, job_id, {"succeeded", "failed", "cancelled"}, 40,
                             check_parent=False,
                         )
                         if detail.get("cleanup_verified") is not True:

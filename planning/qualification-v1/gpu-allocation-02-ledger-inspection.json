@@ -1,0 +1,23 @@
+{
+  "observed_at": "2026-10-21T17:33:13.343556+00:00",
+  "diagnostic_directory": "/tmp/device-scheduler-gpu-allocation-i4jytcio",
+  "reason": "harness used unsupported attributes.uuid selector; jobs blocked before attempts/leases; interrupt requested",
+  "entities": [
+    {
+      "kind": "jobs",
+      "id": "31a6c5f9-e9c8-471b-9584-866775cda44c",
+      "state": "blocked",
+      "attempt_id": null,
+      "lease_id": null,
+      "blocked_reason": "resource_request_not_currently_feasible"
+    },
+    {
+      "kind": "jobs",
+      "id": "bb213664-f16e-4e96-b92e-11f5662a7dc1",
+      "state": "blocked",
+      "attempt_id": null,
+      "lease_id": null,
+      "blocked_reason": "resource_request_not_currently_feasible"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "state": "unknown",
+  "reason": "unit was unloaded after systemd acknowledged stop",
+  "unit_name": "device-scheduler-attempt-5ad57132d4f2388a40aafec18aa1eda3.service",
+  "invocation_id": "fd31a986591f40218039e4392e1aabd1",
+  "evidence": {
+    "adapter": "systemd-user-unit/v1",
+    "unit_description": "Device Scheduler attempt backend-restore-bbfa50bd2382a0525c1825a6c24d3138",
+    "invocation_id": "fd31a986591f40218039e4392e1aabd1",
+    "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-5ad57132d4f2388a40aafec18aa1eda3.service",
+    "post_stop_unit_state": "not-found"
+  },
+  "operation_id": "qualification-fourth-run-exact-unit-cleanup",
+  "stop_requested": true,
+  "cleanup_verified": true
+}

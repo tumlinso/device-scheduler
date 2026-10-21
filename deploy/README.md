@@ -36,15 +36,38 @@ An operator may install a policy extension that registers a Python entry point i
 
 ## systemd user service
 
-`device-scheduler.service` is a user unit for a checkout at `$HOME/device-scheduler`. `install-user-service.sh` performs the workspace sync, creates private config/token directories, preserves an existing config, and installs the unit. It does not provision a token, start the service, or modify a live service. From the repository root:
+`device-scheduler.service` is a user unit for a checkout at `$HOME/device-scheduler`. `install-user-service.sh` performs the workspace sync, creates private config/token directories, preserves an existing config, and installs the unit. It does not provision a token, start the service, or modify a live service.
+
+The staged production files are in [`production/`](production/). They listen only on loopback port `8770`, use separate, explicit grants for the operator, Project Control, KDA, and KernelBender, and keep the backend and continuation registries empty until their real endpoints and identities have been verified. The principal script creates private token files and hashed grants without printing bearer values; it refuses to overwrite existing token or grant files. The operator token has explicitly listed administration/job/read operations, priority 100, and execution scope limited to this checkout. KDA and KernelBender receive separate project-root scopes and job operations, including per-owner job listing. Project Control receives cross-owner lease rights and read/control/attach rights only for the reserved `project-control-llama` backend ID; eviction authority remains a separate grant. No wildcard resource or backend grant is created. Their example client configuration requests a whole-device exclusive 12 GiB GPU allocation by UUID, but that selector is a cooperative client request, not a server-side UUID permission.
+
+The daemon inventories the host's CPU, memory, and NVIDIA GPUs and currently has no production resource-pool allowlist. Keep the unit disabled until the CUDA controller's admissions are fenced and its outstanding ownership is reconciled. Do not run the daemon as a second allocator over the same live pool. This is the cutover fence; neither the KDA UUID selector nor a separate token provides resource-level authorization.
+
+After that fence is complete, inspect existing config and credential paths before applying anything. If the config path is unused, install the staged files and provision grants, then install the unit:
 
 ```sh
-bash deploy/install-user-service.sh
-uv run --locked python scripts/provision-token.py --actions '*'
+set -euo pipefail
+config_root="$HOME/.config/device-scheduler"
+install -d -m 700 "$config_root" "$config_root/tokens" "$HOME/.local/state/device-scheduler"
+for name in config.toml profiles.toml backends.toml continuations.toml; do
+  test ! -e "$config_root/$name" && test ! -L "$config_root/$name"
+done
+install -m 600 deploy/production/config.toml "$config_root/config.toml"
+install -m 600 deploy/production/profiles.toml "$config_root/profiles.toml"
+install -m 600 deploy/production/backends.toml "$config_root/backends.toml"
+install -m 600 deploy/production/continuations.toml "$config_root/continuations.toml"
+XDG_CONFIG_HOME="$HOME/.config" bash deploy/install-user-service.sh
+bash deploy/provision-production-principals.sh
+```
+
+The provisioning script requires the KDA and KernelBender directories to exist. Override `KDA_ROOT` and `KERNELBENDER_ROOT` when their checkout paths differ. It writes `operator.token`, `project-control.token`, `kda.token`, and `kernelbender.token`, with grants stored under `tokens/`. It does not enable or start the service. The bridge templates still need the real isolated GPU UUID and actual checkout paths reviewed before the corresponding clients are configured. Do not claim UUID-specific token authority: authorization limits the principal by operation, execution root, backend ID, and priority only.
+
+Only after the old allocator has been fenced and ownership reconciled, activate and verify the service:
+
+```sh
 systemctl --user daemon-reload
 systemctl --user enable --now device-scheduler.service
 systemctl --user status device-scheduler.service
-uv run --locked python scripts/daemon-smoke.py
+uv run --locked python scripts/daemon-smoke.py --token-file "$HOME/.config/device-scheduler/operator.token"
 ```
 
 Review `~/.config/device-scheduler/config.toml` and the unit before enabling it. The supplied installer requires the checkout at `$HOME/device-scheduler`; for another location, update `WorkingDirectory` and `ExecStart` in the unit and the matching path guard in the installer. To stop it, use `systemctl --user disable --now device-scheduler.service`.

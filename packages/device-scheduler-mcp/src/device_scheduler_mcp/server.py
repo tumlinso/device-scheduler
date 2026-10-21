@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import threading
@@ -193,9 +194,9 @@ def register_operation_tools(server: FastMCP, service: SchedulerService) -> tupl
         )
 
         def handler_factory(contract: Operation):
-            def handler(arguments: dict[str, Any], context: Context) -> dict[str, Any]:
+            async def handler(arguments: dict[str, Any], context: Context) -> dict[str, Any]:
                 principal = principal_from_request(context.request_context.request)
-                return service.dispatch(contract.name, arguments, principal)
+                return await asyncio.to_thread(service.dispatch, contract.name, arguments, principal)
 
             handler.__name__ = contract.tool_name
             return handler

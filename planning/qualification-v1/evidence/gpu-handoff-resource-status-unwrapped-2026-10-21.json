@@ -1,0 +1,210 @@
+{
+  "checks": {
+    "parent_grant_active": true,
+    "pre_backend_quiescent": true,
+    "private_daemon_healthy": true,
+    "single_v100_uuid": true,
+    "source_identity_unchanged_during_run": true
+  },
+  "completed_at": "2026-10-21T17:40:52.935234+00:00",
+  "diagnostic_directory": "/tmp/device-scheduler-gpu-handoff-tau8w0rc",
+  "error": {
+    "message": "Device Scheduler did not discover exactly the grant's GPU UUID",
+    "type": "QualificationError"
+  },
+  "gpu_before_backend": {
+    "gpu_uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+    "inventory_observed_at": "2026-10-21T17:40:19.454487+00:00",
+    "memory_free_bytes": 16929259520,
+    "memory_total_bytes": 17179869184,
+    "name": "Tesla V100-SXM2-16GB",
+    "pci_bus_id": "00000000:02:00.0",
+    "process_count": 0,
+    "process_observed_at": "2026-10-21T17:40:21.845021+00:00",
+    "resource_id": "gpu:testlsserver:GPU-21131915-1488-23af-38dd-1743ae1f5cc8"
+  },
+  "limitations": [
+    "single-user cooperative host; CUDA_VISIBLE_DEVICES is routing, not hostile-code isolation",
+    "one 128 MiB CUDA allocation/copy/free smoke; no kernel correctness suite or performance claim",
+    "manual exact-unit fixture cleanup is qualification-only and is not a production backend stop API",
+    "one fresh FrameShift frame and one local llama.cpp backend; no multi-host or restart matrix"
+  ],
+  "parent_grant": {
+    "gpu_uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+    "owner_id": "foreground:a5f55df4-cf47-46c0-9ad8-ed45b1fc1cb8",
+    "pid": 231543,
+    "process_start": "1816730",
+    "resource_ids": [
+      "accelerator:GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+      "interference:nvlink:runtime:0-2",
+      "interference:pcie:00000000:numa:0"
+    ]
+  },
+  "receipt": "/tmp/device-scheduler-gpu-handoff-tau8w0rc/qualification.json",
+  "schema_version": 1,
+  "scope": "single-host-real-llama-frameshift-device-scheduler-handoff",
+  "source": {
+    "frameshift_source": "/home/tumlinson/FrameShift/src",
+    "llama_binary": "/home/tumlinson/Software/llama.cpp/build/bin/llama-server",
+    "model_path": "/home/tumlinson/.local/share/core4/models/qwen3.6-35b-a3b-q4-k-m/671e47e0ec53c665d048b98c3ecbfd5236b5ca9c3e02ed19fc8f81f7b85140c7/model.gguf",
+    "repository_root": "/home/tumlinson/device-scheduler"
+  },
+  "source_identity_after": {
+    "external_frameshift": {
+      "git_head": "659ce1e2e618d96f8f46f69dd67bdc8ff691ef5e",
+      "source_hashes": {
+        "frameshift/__init__.py": "3d9564a255a304cf1f7d9c812e01171a5f8f44db62ffed0197703467df311b17",
+        "frameshift/__main__.py": "36a7ea7241e00e34007a8b5e9d04cec24b20f1b5b2655dcf3ad28058d81e1cf3",
+        "frameshift/activities.py": "3b12f4033c0d8103a54b374bf2621ffab0a744e8444af9e30b480fe8f422b623",
+        "frameshift/backends/__init__.py": "cb0037a8881f5c1c598e11e7ed6888130649de4ccc457a1d0ecf5ef723eed1bc",
+        "frameshift/backends/llama.py": "90927ac6d71cec9b21b1cb97b9dc2705838a740d2b1dadeb8a8dab81e4130b2f",
+        "frameshift/backends/scripted.py": "d7d34964cc077ba9fbdd7d695a01c2bd5bbb34cecff25fb586b934a47500d584",
+        "frameshift/backends/tokens.py": "eb902d9a4bb89affa5c9de3c9dfa6dc02e91825b3c4c940225c9f246b3f05344",
+        "frameshift/capacity.py": "4dadc907bcce4463875f749377216ebd2494ac7b2155fe582a0df1dd2a24da07",
+        "frameshift/client.py": "31d6c2cdae51f264ba03eeeeeed9efaf13bcf16f9ac4229797435dfc7aceee4e",
+        "frameshift/consumers/__init__.py": "f7c57af4054e1005278a95d3f78dd8210b8004442073fb670a7ac164eb79bc61",
+        "frameshift/consumers/project_control.py": "da3095c5a3897b8d17133b52e0731490b4c02d7eb009217d061025a8fc440a87",
+        "frameshift/context.py": "5ae5bc2c364d23e0ed3473e5925402229818e108792227fd9f669902b4bb5e31",
+        "frameshift/engine.py": "2b883418c29facc5791d2cb0ed2f7fbe1e00136308176ea5d99d152d55b4275f",
+        "frameshift/models.py": "e9d0db9821a466d6ddb5e965634390eda39fa77617addf227ce196c0f678c8e6",
+        "frameshift/registry.py": "16be210465a2ee498f9a37c3c231729d825c6fa4aa57d385e7a4883a7087c9fb",
+        "frameshift/scheduler.py": "04ad6b4d239fcd729db38de37aa5250d08ecf8004404dea58bf1284e127ffa37",
+        "frameshift/service.py": "bb3a8a0febf6b064752e6adc6ed19f836dc7559eebff938bc3708ceab6030572",
+        "frameshift/store.py": "8e08f55b6aca26b04c44b8161884c4533fbaae3eaa679267109140d9f478d67f"
+      },
+      "source_root": "/home/tumlinson/FrameShift/src"
+    },
+    "llama_binary": {
+      "path": "/home/tumlinson/Software/llama.cpp/build/bin/llama-server",
+      "sha256": "b42facfb93d85e1a581862c872615834223dc479871701c0b797aeee1fa11e9d",
+      "size_bytes": 17920
+    },
+    "model_identity": {
+      "content_sha256": null,
+      "content_sha256_status": "not-computed-large-local-model",
+      "device": 64512,
+      "filename_digest_hint": "671e47e0ec53c665d048b98c3ecbfd5236b5ca9c3e02ed19fc8f81f7b85140c7",
+      "inode": 2679605,
+      "mtime_ns": 1791210789910364709,
+      "path": "/home/tumlinson/.local/share/core4/models/qwen3.6-35b-a3b-q4-k-m/671e47e0ec53c665d048b98c3ecbfd5236b5ca9c3e02ed19fc8f81f7b85140c7/model.gguf",
+      "size_bytes": 20419565568
+    },
+    "production_source_hashes": {
+      "packages/device-scheduler-adapters/src/device_scheduler_adapters/__init__.py": "346598ceb2f75802c3443e1cdc40e2b1a2c0c698d48ff911fb9752e1c68b8e6c",
+      "packages/device-scheduler-adapters/src/device_scheduler_adapters/backends.py": "c4eb910fccc1ff49a6f73135bdff44f310c51ac231e6119b33f05edaf41caec5",
+      "packages/device-scheduler-adapters/src/device_scheduler_adapters/frameshift.py": "6e39deb841279f4bb1cf76508504f49d6947483e932e688de59041e4e304fcaf",
+      "packages/device-scheduler-adapters/src/device_scheduler_adapters/host.py": "9fc1b41de1600ce8be4554cf548b130bb46fdba065445722dc234554070bab59",
+      "packages/device-scheduler-adapters/src/device_scheduler_adapters/nvidia.py": "962d03510a4badfbcb2e351b8b2090a7fb7da1a54600eecfe5de016c3fdadb11",
+      "packages/device-scheduler-adapters/src/device_scheduler_adapters/project_control.py": "e97dac72b929ecafaa0bca84b20a8f0617f4fdbf6bc3384f1d67b2f9aae1f51a",
+      "packages/device-scheduler-adapters/src/device_scheduler_adapters/sqlite.py": "cd252ed21a6684581110ca236885118d4606881288e3f047ffac3cf17009d5ae",
+      "packages/device-scheduler-adapters/src/device_scheduler_adapters/systemd.py": "6839cfd72665ea3e117afe07b48aca2d20b0362d59b72c80f25462c079238276",
+      "packages/device-scheduler-core/src/device_scheduler_core/__init__.py": "cb950df8163d657f2f2957e271215b7243b85c6c2f2d37e8ec04775d4c559b6b",
+      "packages/device-scheduler-core/src/device_scheduler_core/allocator.py": "57763fced20443e43542502b473e71b262af37207a976d02d8654d6651287908",
+      "packages/device-scheduler-core/src/device_scheduler_core/application.py": "22aeacadf1afc90e9573c448f9aa05b1ccc1b8b5005020650fc2297e4d316530",
+      "packages/device-scheduler-core/src/device_scheduler_core/errors.py": "7c08ed4539e93ed750e4cc28bb54f91e606c470ece14389677fb7c2e763515f5",
+      "packages/device-scheduler-core/src/device_scheduler_core/handoff.py": "db8380eee3f1958cd4e5cbf85678d0235ba77d2e2a31809f59d9d5c329098934",
+      "packages/device-scheduler-core/src/device_scheduler_core/models.py": "41c901f139ec2c0d58c4ecfa8d29274142eb4be7b17046cb746235f78d27fb2b",
+      "packages/device-scheduler-core/src/device_scheduler_core/observability.py": "e805c2895032317ffaf5418fd4c58408e2fd02bcf97f824c6724094de1cf0648",
+      "packages/device-scheduler-core/src/device_scheduler_core/policy.py": "0223fa740b94af3d0ad2c2d59a9371bc8f6336e02347f99130c6974b1ac824f9",
+      "packages/device-scheduler-core/src/device_scheduler_core/ports.py": "a4972b5e22c15eeed00c19755dd66af6e0088b4b62a98fe9bc66aaefcb2aa30f",
+      "packages/device-scheduler-core/src/device_scheduler_core/scheduling.py": "9b535f8d8a9a9244b7ec74ac63d8156a0152ed4acbf1f3da3986914259260ad6",
+      "packages/device-scheduler-core/src/device_scheduler_core/validation.py": "31494e8fa927d6e70ddf1066bae6ef2671b4ef5947488a5cd6dff686002746a7",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/__init__.py": "45e6175cd9a6bef2e1f31e5cf5e724d00cd832696983907abbe1b0410f0ab8ca",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/__main__.py": "935a1c1166b0c1ea35a82256345000bf2c73ded718d77773bc27a71ecce28f7d",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/auth.py": "d8b81643c34457d4936044c6e667a75063d3a09b9c3763899aec8820116272c0",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/cli.py": "8a9b64c1582aea72776a785925869c505b89d333939bdd8ebdac8d0aaf570d63",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/client.py": "fb5c3645ae67d525768b89c43915333646713ca2f3df4483d2e4976cc0c0b1c6",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/config.py": "893828b240d7ba7c1c8544a95d6396265624cd0d6dedd14c8d8fe2c4446413f2",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/kda_bridge.py": "44a19453479bb3854562b1f81067dc32fd8de7d0d28df83f1731a4bc303237f8",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/policies.py": "ca0704cf82c85d10a0ca5124bf0877c7a348bac06dc93474849df6e08ac84aca",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/registry.py": "202d875bd5f8cb2194646a03af709201c62b37f2092f6d82a8b21bfd5f565185",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/server.py": "182747613b6247c151795f77920f828daa1b77c613cfd5cd958f0826d884f6c2",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/service.py": "5f8bcb525bd4f935d1da366c9e0852accf98e8ad00a5596d716ab037c4530fee",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/stdio.py": "4234544ef84569636977de41999e8cbbb013c4994f35f91a59605a6a19e43616"
+    },
+    "qualification_source_hashes": {
+      "scripts/qualification_gpu_probe.py": "6bef50c66c774e80808f2505d51b746d05a8fb863667486ada1e1db0b48c7121",
+      "scripts/qualify_gpu_handoff.py": "4fa3d8d67acea5c3cfa098b3e3453958bd4ef55af32af77f1d16b959fd377bfe"
+    }
+  },
+  "source_identity_before": {
+    "external_frameshift": {
+      "git_head": "659ce1e2e618d96f8f46f69dd67bdc8ff691ef5e",
+      "source_hashes": {
+        "frameshift/__init__.py": "3d9564a255a304cf1f7d9c812e01171a5f8f44db62ffed0197703467df311b17",
+        "frameshift/__main__.py": "36a7ea7241e00e34007a8b5e9d04cec24b20f1b5b2655dcf3ad28058d81e1cf3",
+        "frameshift/activities.py": "3b12f4033c0d8103a54b374bf2621ffab0a744e8444af9e30b480fe8f422b623",
+        "frameshift/backends/__init__.py": "cb0037a8881f5c1c598e11e7ed6888130649de4ccc457a1d0ecf5ef723eed1bc",
+        "frameshift/backends/llama.py": "90927ac6d71cec9b21b1cb97b9dc2705838a740d2b1dadeb8a8dab81e4130b2f",
+        "frameshift/backends/scripted.py": "d7d34964cc077ba9fbdd7d695a01c2bd5bbb34cecff25fb586b934a47500d584",
+        "frameshift/backends/tokens.py": "eb902d9a4bb89affa5c9de3c9dfa6dc02e91825b3c4c940225c9f246b3f05344",
+        "frameshift/capacity.py": "4dadc907bcce4463875f749377216ebd2494ac7b2155fe582a0df1dd2a24da07",
+        "frameshift/client.py": "31d6c2cdae51f264ba03eeeeeed9efaf13bcf16f9ac4229797435dfc7aceee4e",
+        "frameshift/consumers/__init__.py": "f7c57af4054e1005278a95d3f78dd8210b8004442073fb670a7ac164eb79bc61",
+        "frameshift/consumers/project_control.py": "da3095c5a3897b8d17133b52e0731490b4c02d7eb009217d061025a8fc440a87",
+        "frameshift/context.py": "5ae5bc2c364d23e0ed3473e5925402229818e108792227fd9f669902b4bb5e31",
+        "frameshift/engine.py": "2b883418c29facc5791d2cb0ed2f7fbe1e00136308176ea5d99d152d55b4275f",
+        "frameshift/models.py": "e9d0db9821a466d6ddb5e965634390eda39fa77617addf227ce196c0f678c8e6",
+        "frameshift/registry.py": "16be210465a2ee498f9a37c3c231729d825c6fa4aa57d385e7a4883a7087c9fb",
+        "frameshift/scheduler.py": "04ad6b4d239fcd729db38de37aa5250d08ecf8004404dea58bf1284e127ffa37",
+        "frameshift/service.py": "bb3a8a0febf6b064752e6adc6ed19f836dc7559eebff938bc3708ceab6030572",
+        "frameshift/store.py": "8e08f55b6aca26b04c44b8161884c4533fbaae3eaa679267109140d9f478d67f"
+      },
+      "source_root": "/home/tumlinson/FrameShift/src"
+    },
+    "llama_binary": {
+      "path": "/home/tumlinson/Software/llama.cpp/build/bin/llama-server",
+      "sha256": "b42facfb93d85e1a581862c872615834223dc479871701c0b797aeee1fa11e9d",
+      "size_bytes": 17920
+    },
+    "model_identity": {
+      "content_sha256": null,
+      "content_sha256_status": "not-computed-large-local-model",
+      "device": 64512,
+      "filename_digest_hint": "671e47e0ec53c665d048b98c3ecbfd5236b5ca9c3e02ed19fc8f81f7b85140c7",
+      "inode": 2679605,
+      "mtime_ns": 1791210789910364709,
+      "path": "/home/tumlinson/.local/share/core4/models/qwen3.6-35b-a3b-q4-k-m/671e47e0ec53c665d048b98c3ecbfd5236b5ca9c3e02ed19fc8f81f7b85140c7/model.gguf",
+      "size_bytes": 20419565568
+    },
+    "production_source_hashes": {
+      "packages/device-scheduler-adapters/src/device_scheduler_adapters/__init__.py": "346598ceb2f75802c3443e1cdc40e2b1a2c0c698d48ff911fb9752e1c68b8e6c",
+      "packages/device-scheduler-adapters/src/device_scheduler_adapters/backends.py": "c4eb910fccc1ff49a6f73135bdff44f310c51ac231e6119b33f05edaf41caec5",
+      "packages/device-scheduler-adapters/src/device_scheduler_adapters/frameshift.py": "6e39deb841279f4bb1cf76508504f49d6947483e932e688de59041e4e304fcaf",
+      "packages/device-scheduler-adapters/src/device_scheduler_adapters/host.py": "9fc1b41de1600ce8be4554cf548b130bb46fdba065445722dc234554070bab59",
+      "packages/device-scheduler-adapters/src/device_scheduler_adapters/nvidia.py": "962d03510a4badfbcb2e351b8b2090a7fb7da1a54600eecfe5de016c3fdadb11",
+      "packages/device-scheduler-adapters/src/device_scheduler_adapters/project_control.py": "e97dac72b929ecafaa0bca84b20a8f0617f4fdbf6bc3384f1d67b2f9aae1f51a",
+      "packages/device-scheduler-adapters/src/device_scheduler_adapters/sqlite.py": "cd252ed21a6684581110ca236885118d4606881288e3f047ffac3cf17009d5ae",
+      "packages/device-scheduler-adapters/src/device_scheduler_adapters/systemd.py": "6839cfd72665ea3e117afe07b48aca2d20b0362d59b72c80f25462c079238276",
+      "packages/device-scheduler-core/src/device_scheduler_core/__init__.py": "cb950df8163d657f2f2957e271215b7243b85c6c2f2d37e8ec04775d4c559b6b",
+      "packages/device-scheduler-core/src/device_scheduler_core/allocator.py": "57763fced20443e43542502b473e71b262af37207a976d02d8654d6651287908",
+      "packages/device-scheduler-core/src/device_scheduler_core/application.py": "22aeacadf1afc90e9573c448f9aa05b1ccc1b8b5005020650fc2297e4d316530",
+      "packages/device-scheduler-core/src/device_scheduler_core/errors.py": "7c08ed4539e93ed750e4cc28bb54f91e606c470ece14389677fb7c2e763515f5",
+      "packages/device-scheduler-core/src/device_scheduler_core/handoff.py": "db8380eee3f1958cd4e5cbf85678d0235ba77d2e2a31809f59d9d5c329098934",
+      "packages/device-scheduler-core/src/device_scheduler_core/models.py": "41c901f139ec2c0d58c4ecfa8d29274142eb4be7b17046cb746235f78d27fb2b",
+      "packages/device-scheduler-core/src/device_scheduler_core/observability.py": "e805c2895032317ffaf5418fd4c58408e2fd02bcf97f824c6724094de1cf0648",
+      "packages/device-scheduler-core/src/device_scheduler_core/policy.py": "0223fa740b94af3d0ad2c2d59a9371bc8f6336e02347f99130c6974b1ac824f9",
+      "packages/device-scheduler-core/src/device_scheduler_core/ports.py": "a4972b5e22c15eeed00c19755dd66af6e0088b4b62a98fe9bc66aaefcb2aa30f",
+      "packages/device-scheduler-core/src/device_scheduler_core/scheduling.py": "9b535f8d8a9a9244b7ec74ac63d8156a0152ed4acbf1f3da3986914259260ad6",
+      "packages/device-scheduler-core/src/device_scheduler_core/validation.py": "31494e8fa927d6e70ddf1066bae6ef2671b4ef5947488a5cd6dff686002746a7",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/__init__.py": "45e6175cd9a6bef2e1f31e5cf5e724d00cd832696983907abbe1b0410f0ab8ca",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/__main__.py": "935a1c1166b0c1ea35a82256345000bf2c73ded718d77773bc27a71ecce28f7d",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/auth.py": "d8b81643c34457d4936044c6e667a75063d3a09b9c3763899aec8820116272c0",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/cli.py": "8a9b64c1582aea72776a785925869c505b89d333939bdd8ebdac8d0aaf570d63",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/client.py": "fb5c3645ae67d525768b89c43915333646713ca2f3df4483d2e4976cc0c0b1c6",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/config.py": "893828b240d7ba7c1c8544a95d6396265624cd0d6dedd14c8d8fe2c4446413f2",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/kda_bridge.py": "44a19453479bb3854562b1f81067dc32fd8de7d0d28df83f1731a4bc303237f8",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/policies.py": "ca0704cf82c85d10a0ca5124bf0877c7a348bac06dc93474849df6e08ac84aca",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/registry.py": "202d875bd5f8cb2194646a03af709201c62b37f2092f6d82a8b21bfd5f565185",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/server.py": "182747613b6247c151795f77920f828daa1b77c613cfd5cd958f0826d884f6c2",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/service.py": "5f8bcb525bd4f935d1da366c9e0852accf98e8ad00a5596d716ab037c4530fee",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/stdio.py": "4234544ef84569636977de41999e8cbbb013c4994f35f91a59605a6a19e43616"
+    },
+    "qualification_source_hashes": {
+      "scripts/qualification_gpu_probe.py": "6bef50c66c774e80808f2505d51b746d05a8fb863667486ada1e1db0b48c7121",
+      "scripts/qualify_gpu_handoff.py": "4fa3d8d67acea5c3cfa098b3e3453958bd4ef55af32af77f1d16b959fd377bfe"
+    }
+  },
+  "status": "failed",
+  "traceback": "Traceback (most recent call last):\n  File \"/home/tumlinson/device-scheduler/scripts/qualify_gpu_handoff.py\", line 992, in execute_qualification\n    raise QualificationError(\"Device Scheduler did not discover exactly the grant's GPU UUID\")\nQualificationError: Device Scheduler did not discover exactly the grant's GPU UUID\n"
+}

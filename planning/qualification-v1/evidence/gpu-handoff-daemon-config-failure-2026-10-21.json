@@ -1,0 +1,53 @@
+{
+  "checks": {
+    "parent_grant_active": true,
+    "pre_backend_quiescent": true,
+    "single_v100_uuid": true
+  },
+  "completed_at": "2026-10-21T17:33:54.451768+00:00",
+  "diagnostic_directory": "/tmp/device-scheduler-gpu-handoff-tel7ouev",
+  "error": {
+    "message": "private Device Scheduler daemon exited before readiness",
+    "type": "QualificationError"
+  },
+  "gpu_before_backend": {
+    "gpu_uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+    "inventory_observed_at": "2026-10-21T17:33:48.536577+00:00",
+    "memory_free_bytes": 16929259520,
+    "memory_total_bytes": 17179869184,
+    "name": "Tesla V100-SXM2-16GB",
+    "pci_bus_id": "00000000:02:00.0",
+    "process_count": 0,
+    "process_observed_at": "2026-10-21T17:33:50.909015+00:00",
+    "resource_id": "gpu:testlsserver:GPU-21131915-1488-23af-38dd-1743ae1f5cc8"
+  },
+  "limitations": [
+    "single-user cooperative host; CUDA_VISIBLE_DEVICES is routing, not hostile-code isolation",
+    "one 128 MiB CUDA allocation/copy/free smoke; no kernel correctness suite or performance claim",
+    "manual exact-unit fixture cleanup is qualification-only and is not a production backend stop API",
+    "one fresh FrameShift frame and one local llama.cpp backend; no multi-host or restart matrix"
+  ],
+  "parent_grant": {
+    "gpu_uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+    "owner_id": "foreground:a5f55df4-cf47-46c0-9ad8-ed45b1fc1cb8",
+    "pid": 231543,
+    "process_start": "1816730",
+    "resource_ids": [
+      "accelerator:GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+      "interference:nvlink:runtime:0-2",
+      "interference:pcie:00000000:numa:0"
+    ]
+  },
+  "receipt": "/tmp/device-scheduler-gpu-handoff-tel7ouev/qualification.json",
+  "schema_version": 1,
+  "scope": "single-host-real-llama-frameshift-device-scheduler-handoff",
+  "source": {
+    "frameshift_source": "/home/tumlinson/FrameShift/src",
+    "llama_binary": "/home/tumlinson/Software/llama.cpp/build/bin/llama-server",
+    "model_path": "/home/tumlinson/.local/share/core4/models/qwen3.6-35b-a3b-q4-k-m/671e47e0ec53c665d048b98c3ecbfd5236b5ca9c3e02ed19fc8f81f7b85140c7/model.gguf",
+    "repository_root": "/home/tumlinson/device-scheduler"
+  },
+  "source_identity_before": null,
+  "status": "failed",
+  "traceback": "Traceback (most recent call last):\n  File \"/home/tumlinson/device-scheduler/scripts/qualify_gpu_handoff.py\", line 983, in execute_qualification\n    await _wait_http_ready(origin, daemon)\n  File \"/home/tumlinson/device-scheduler/scripts/qualify_gpu_handoff.py\", line 784, in _wait_http_ready\n    raise QualificationError(\"private Device Scheduler daemon exited before readiness\")\nQualificationError: private Device Scheduler daemon exited before readiness\n"
+}

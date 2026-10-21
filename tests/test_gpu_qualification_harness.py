@@ -3,9 +3,11 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 import functools
+import hashlib
 import json
 import os
 from pathlib import Path
+import socket
 import sys
 import tomllib
 
@@ -13,6 +15,7 @@ import pytest
 
 from scripts.qualify_gpu_handoff import (
     APP_ID,
+    AGENT_TYPE_ID,
     BACKEND_PROFILE_ID,
     CONSUMER_CONTRACT,
     CONTINUATION_REF,
@@ -24,6 +27,11 @@ from scripts.qualify_gpu_handoff import (
     _cancel_handoff_until_terminal,
     _context_from_prompt,
     _encode_qualification_context,
+    _frameshift_runtime,
+    _reconcile_backend_on_failure,
+    _select_scheduler_gpu_resource,
+    _wait_backend_ready,
+    capture_source_identity,
     _source_identity_matches,
     _write_scheduler_configuration,
     validate_parent_grant,
@@ -32,6 +40,116 @@ from scripts.qualification_gpu_probe import validate_probe_request
 
 
 GPU_UUID = "GPU-01234567-89ab-cdef-0123-456789abcdef"
+
+
+def _execution_handle(*, identity: str = "attempt-qualification") -> dict:
+    from device_scheduler_core.models import ExecutionHandle
+
+    return ExecutionHandle(
+        adapter_id="systemd-user-unit",
+        external_id="device-scheduler-attempt-qualification.service",
+        identity=identity,
+        metadata={"invocation_id": "invocation-qualification"},
+    ).to_dict()
+
+
+def test_backend_start_waits_for_ready_and_preserves_handle_seen_while_starting():
+    handle = _execution_handle()
+
+    class FakeClient:
+        responses = iter((
+            {"backend_id": "backend-a", "state": "starting", "execution_handle": handle},
+            {"backend_id": "backend-a", "state": "ready", "execution_handle": handle},
+        ))
+        calls = []
+
+        async def call(self, operation, arguments):
+            self.calls.append((operation, arguments))
+            return next(self.responses)
+
+    client = FakeClient()
+    observed = []
+    started, returned_handle = asyncio.run(_wait_backend_ready(
+        client,
+        "backend-a",
+        {"backend_id": "backend-a", "state": "starting", "execution_handle": handle},
+        timeout_seconds=1,
+        poll_interval_seconds=0.001,
+        on_record=observed.append,
+    ))
+
+    assert started["state"] == "ready"
+    assert returned_handle == handle
+    assert observed[0]["state"] == "starting"
+    assert observed[0]["execution_handle"] == handle
+    assert client.calls == [
+        ("backends.get", {"backend_id": "backend-a"}),
+        ("backends.get", {"backend_id": "backend-a"}),
+    ]
+
+
+def test_backend_failure_cleanup_refreshes_handle_before_exact_unit_cancel():
+    initial_handle = _execution_handle(identity="stale-attempt")
+    current_handle = _execution_handle(identity="current-attempt")
+
+    class FakeClient:
+        async def call(self, operation, arguments):
+            assert operation == "backends.get"
+            assert arguments == {"backend_id": "backend-a"}
+            return {
+                "backend_id": "backend-a",
+                "state": "ready",
+                "execution_handle": current_handle,
+            }
+
+    cancelled = []
+
+    def cancel(handle, *, operation_id, timeout_seconds):
+        cancelled.append((handle.to_dict(), operation_id, timeout_seconds))
+        return {"state": "stopped", "cleanup_verified": True}
+
+    report = {}
+    returned = asyncio.run(_reconcile_backend_on_failure(
+        FakeClient(),
+        "backend-a",
+        initial_handle,
+        cleanup_allowed=True,
+        report=report,
+        cancel=cancel,
+    ))
+
+    assert returned == current_handle
+    assert report["backend_record_at_failure"]["execution_handle"] == current_handle
+    assert report["early_backend_cleanup"]["state"] == "complete"
+    assert cancelled == [(
+        current_handle,
+        "qualification-early-cleanup:backend-a",
+        30,
+    )]
+
+
+def test_backend_failure_cleanup_does_not_stop_after_frame_spawn_may_have_occurred():
+    handle = _execution_handle()
+
+    class FakeClient:
+        async def call(self, _operation, _arguments):
+            return {"backend_id": "backend-a", "state": "ready", "execution_handle": handle}
+
+    def forbidden_cancel(*_args, **_kwargs):
+        raise AssertionError("backend must remain untouched after FrameShift spawn may have occurred")
+
+    report = {}
+    asyncio.run(_reconcile_backend_on_failure(
+        FakeClient(),
+        "backend-a",
+        None,
+        cleanup_allowed=False,
+        report=report,
+        cancel=forbidden_cancel,
+    ))
+
+    assert report["early_backend_cleanup"]["attempted"] is False
+    assert report["early_backend_cleanup"]["reason"] == "FrameShift spawn or consumer attachment may have occurred"
 
 
 def _grant(path: Path, *, project_root: Path, resource_ids: list[str] | None = None) -> dict:
@@ -130,6 +248,32 @@ def test_qualification_source_identity_requires_exact_before_after_match():
     assert _source_identity_matches(baseline, dict(baseline))
     changed = {**baseline, "production_source_hashes": {"packages/core.py": "d" * 64}}
     assert not _source_identity_matches(baseline, changed)
+
+
+def test_source_identity_capture_returns_production_and_external_hashes(tmp_path):
+    frameshift_source = tmp_path / "frameshift-src"
+    frameshift_package = frameshift_source / "frameshift"
+    frameshift_package.mkdir(parents=True)
+    frame_file = frameshift_package / "engine.py"
+    frame_file.write_text("ENGINE_SENTINEL = 1\n", encoding="utf-8")
+    llama_binary = tmp_path / "llama-server"
+    llama_binary.write_bytes(b"small qualification binary\n")
+    model = tmp_path / "model.gguf"
+    model.write_bytes(b"small model identity sentinel\n")
+
+    identity = capture_source_identity(
+        frameshift_source=frameshift_source,
+        llama_binary=llama_binary,
+        model=model,
+    )
+
+    assert identity["production_source_hashes"]
+    assert identity["qualification_source_hashes"]["scripts/qualify_gpu_handoff.py"]
+    assert identity["external_frameshift"]["source_hashes"] == {
+        "frameshift/engine.py": hashlib.sha256(frame_file.read_bytes()).hexdigest(),
+    }
+    assert identity["llama_binary"]["size_bytes"] == llama_binary.stat().st_size
+    assert identity["model_identity"]["content_sha256_status"] == "not-computed-large-local-model"
 
 
 def test_handoff_signal_cancellation_waits_for_terminal_and_checks_parent_grant():
@@ -262,13 +406,64 @@ def test_actual_frameshift_engine_offer_prompt_contains_granted_handoff_identity
         engine.close()
 
 
+def test_frameshift_runtime_builds_real_registry_without_starting_a_listener(tmp_path, monkeypatch):
+    frameshift_source = Path("/home/tumlinson/FrameShift/src").resolve()
+    if not (frameshift_source / "frameshift" / "engine.py").is_file():
+        pytest.skip("FrameShift source checkout is unavailable")
+    if str(frameshift_source) not in sys.path:
+        sys.path.insert(0, str(frameshift_source))
+
+    from frameshift.service import FrameShiftService
+
+    class DisabledListener:
+        def __init__(self, service):
+            self.service = service
+            self.server_address = ("127.0.0.1", 0)
+
+        def serve_forever(self):
+            return None
+
+        def shutdown(self):
+            return None
+
+        def server_close(self):
+            return None
+
+    monkeypatch.setattr(
+        FrameShiftService,
+        "create_server",
+        lambda self, *_args, **_kwargs: DisabledListener(self),
+    )
+    server, thread, _client, _config = _frameshift_runtime(
+        tmp_path, backend_id="qualification-backend", llama_port=6553,
+        gpu_uuid=GPU_UUID, handoff_id="qualification-handoff", frame_id="qualification-frame",
+        app_token="app-token", scheduler_token="scheduler-token", timeout_seconds=1,
+    )
+    engine = server.service.engine
+    try:
+        registry = engine.registry
+        assert registry.application_exists(APP_ID)
+        assert registry.agent_type(AGENT_TYPE_ID).toolkit_ids == (TOOLKIT_ID,)
+        assert registry.model_binding(MODEL_BINDING_ID).max_context_tokens == 4096
+        assert registry.toolkit(TOOLKIT_ID).capabilities == frozenset({"gpu.probe"})
+        assert registry.grant(APP_ID, "qualification-grant").allowed_toolkits == frozenset({TOOLKIT_ID})
+        assert len(engine.providers) == 1
+        assert engine.providers[0].backend_id == "qualification-backend"
+        assert not thread.is_alive()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=1)
+        engine.close()
+
+
 def test_generated_configuration_is_private_loopback_and_uuid_pinned(tmp_path):
     work = tmp_path / "isolated"
     work.mkdir(mode=0o700)
     scheduler_token_file = work / "frameshift-scheduler.token"
     app_token_file = work / "frameshift-app.token"
-    scheduler_token_file.write_text("scheduler-secret\n", encoding="utf-8")
-    app_token_file.write_text("app-secret\n", encoding="utf-8")
+    scheduler_token_file.write_text("scheduler-secret-qualification-token-0001\n", encoding="utf-8")
+    app_token_file.write_text("app-secret-qualification-token-0001\n", encoding="utf-8")
     scheduler_token_file.chmod(0o600)
     app_token_file.chmod(0o600)
 
@@ -300,6 +495,147 @@ def test_generated_configuration_is_private_loopback_and_uuid_pinned(tmp_path):
     assert continuations["continuations"][CONTINUATION_REF]["frame_id"] == "qualification-frame"
     assert all(path.stat().st_mode & 0o077 == 0 for path in (token_file, token_dir, state_dir))
     assert (work / "backend-profiles.toml").stat().st_mode & 0o077 == 0
+
+
+def test_generated_configuration_loads_and_composes_real_scheduler_without_starting_work(tmp_path):
+    from device_scheduler_adapters.systemd import ExecutionAdapterError
+    from device_scheduler_core.models import (
+        ExecutionContext,
+        JobSpec,
+        Resource,
+        ResourceAllocation,
+        ResourceRequirement,
+    )
+    from device_scheduler_mcp.config import ServiceConfig
+    from device_scheduler_mcp.server import build_default_scheduler
+
+    work = tmp_path / "scheduler-composition"
+    work.mkdir(mode=0o700)
+    scheduler_token_file = work / "frameshift-scheduler.token"
+    app_token_file = work / "frameshift-app.token"
+    scheduler_token_file.write_text("scheduler-secret-qualification-token-0001\n", encoding="utf-8")
+    app_token_file.write_text("app-secret-qualification-token-0001\n", encoding="utf-8")
+    scheduler_token_file.chmod(0o600)
+    app_token_file.chmod(0o600)
+    config_path, token_file, token_dir, state_dir = _write_scheduler_configuration(
+        work,
+        port=18780,
+        token="scheduler-client-token",
+        scheduler_token_file=scheduler_token_file,
+        fs_url="http://127.0.0.1:18781",
+        fs_app_token_file=app_token_file,
+        frame_id="qualification-frame",
+        llama_binary=Path("/opt/llama-server"),
+        model=Path("/opt/model.gguf"),
+        llama_port=18782,
+        gpu_uuid=GPU_UUID,
+    )
+
+    service_config = ServiceConfig.from_file(config_path)
+    assert service_config.token_directory == token_dir
+    assert service_config.token_file == token_file
+    assert service_config.state_directory == state_dir
+    assert service_config.profiles_path == work / "profiles.toml"
+    assert service_config.backend_profiles_path == work / "backend-profiles.toml"
+    assert service_config.continuations_path == work / "continuations.toml"
+
+    scheduler = build_default_scheduler(service_config)
+    assert scheduler.backend_adapter is not None
+    assert scheduler.continuation_adapter is not None
+    assert scheduler.config.profiles[EXECUTION_PROFILE_ID]["environment"]["CUDA_VISIBLE_DEVICES"] == GPU_UUID
+    assert scheduler.config.backend_profiles[BACKEND_PROFILE_ID]["access_mode"] == "frameshift-only"
+    resolved = scheduler.executor._profile_resolver(EXECUTION_PROFILE_ID)
+    assert resolved["limits"] == {
+        "cpu_quota_percent": 800.0,
+        "memory_max_bytes": 51539607552,
+        "tasks_max": 128,
+    }
+
+    job = JobSpec(
+        owner_id="qualification",
+        profile_id=EXECUTION_PROFILE_ID,
+        resources=(ResourceRequirement(
+            kind="gpu",
+            quantities={"memory_bytes": 128 * 1024 * 1024},
+            selectors={"uuid": GPU_UUID},
+        ),),
+    )
+    resource = Resource(
+        resource_id="qualification-gpu",
+        host_id=socket.gethostname(),
+        kind="gpu",
+        capacities={"memory_bytes": 16 * 1024 * 1024 * 1024},
+        attributes={"uuid": GPU_UUID},
+    )
+    context = ExecutionContext(
+        allocations=(ResourceAllocation(
+            resource_id=resource.resource_id,
+            quantities={"memory_bytes": 128 * 1024 * 1024},
+        ),),
+        resources=(resource,),
+        claim_id="qualification-parent-grant",
+        fencing_token=1,
+    )
+    bound, _ = scheduler.executor._bind_execution_context(job, resolved, context)
+    assert bound["environment"]["CUDA_VISIBLE_DEVICES"] == GPU_UUID
+    properties = scheduler.executor._unit_properties(bound)
+    assert "CPUQuota=800%" in properties
+    assert "MemoryMax=51539607552" in properties
+    assert "TasksMax=128" in properties
+    with pytest.raises(ExecutionAdapterError, match="conflicts with the scheduler-granted GPU UUIDs"):
+        scheduler.executor._bind_execution_context(job, resolved, None)
+    wrong_gpu = Resource(
+        resource_id="qualification-wrong-gpu",
+        host_id=socket.gethostname(),
+        kind="gpu",
+        capacities={"memory_bytes": 16 * 1024 * 1024 * 1024},
+        attributes={"uuid": "GPU-fedcba98-7654-3210-fedc-ba9876543210"},
+    )
+    wrong_context = ExecutionContext(
+        allocations=(ResourceAllocation(
+            resource_id=wrong_gpu.resource_id,
+            quantities={"memory_bytes": 128 * 1024 * 1024},
+        ),),
+        resources=(wrong_gpu,),
+        claim_id="qualification-wrong-parent-grant",
+        fencing_token=2,
+    )
+    with pytest.raises(ExecutionAdapterError, match="conflicts with the scheduler-granted GPU UUIDs"):
+        scheduler.executor._bind_execution_context(job, resolved, wrong_context)
+
+
+def test_resources_list_dispatch_uses_allocator_status_envelopes(tmp_path):
+    from device_scheduler_adapters.sqlite import Ledger
+    from device_scheduler_core.allocator import ResourceAllocator
+    from device_scheduler_core.application import Scheduler
+    from device_scheduler_core.models import Principal, Resource
+
+    ledger = Ledger(tmp_path / "resource-list-ledger.sqlite3")
+    allocator = ResourceAllocator(ledger)
+    gpu = Resource(
+        resource_id="qualification-gpu",
+        host_id="qualification-host",
+        kind="gpu",
+        capacities={"memory_bytes": 16 * 1024 * 1024 * 1024},
+        attributes={"uuid": GPU_UUID},
+    )
+    allocator.register_resource(gpu, source_adapter_id="qualification-nvidia")
+    scheduler = Scheduler(ledger=ledger, allocator=allocator, resource_adapters=())
+    principal = Principal(principal_id="qualification", actions=frozenset({"resources.list"}))
+
+    response = scheduler.dispatch("resources.list", {}, principal)
+    selected, status = _select_scheduler_gpu_resource(response, GPU_UUID)
+    assert selected["resource_id"] == gpu.resource_id
+    assert selected["attributes"]["uuid"] == GPU_UUID
+    assert status["available"] is True
+    assert status["source_adapter_id"] == "qualification-nvidia"
+
+    allocator.reconcile_resource_inventory(
+        "qualification-nvidia", (), error="qualification telemetry unavailable",
+    )
+    unavailable_response = scheduler.dispatch("resources.list", {}, principal)
+    with pytest.raises(QualificationError, match="reports the grant's GPU unavailable"):
+        _select_scheduler_gpu_resource(unavailable_response, GPU_UUID)
 
 
 def test_harness_uses_distinct_registry_identities():

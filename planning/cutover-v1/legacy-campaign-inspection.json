@@ -1,0 +1,41 @@
+{
+  "observed_at": "2026-10-21T17:27:19.114063+00:00",
+  "scope": "read-only home-level legacy campaign state; no scheduling or mutations",
+  "projects": [
+    {
+      "project": "/home/tumlinson/Baseplane",
+      "database": "/home/tumlinson/Baseplane/.todo-orchestrator/runtime/background.sqlite3",
+      "watches": [],
+      "job_states": [
+        [
+          "succeeded",
+          21
+        ]
+      ],
+      "workers": []
+    },
+    {
+      "project": "/home/tumlinson/V200",
+      "database": "/home/tumlinson/V200/.todo-orchestrator/runtime/background.sqlite3",
+      "watches": [],
+      "job_states": [
+        [
+          "failed",
+          3
+        ],
+        [
+          "succeeded",
+          1
+        ]
+      ],
+      "workers": []
+    },
+    {
+      "project": "/home/tumlinson/skills_dev",
+      "database": "/home/tumlinson/skills_dev/.todo-orchestrator/runtime/background.sqlite3",
+      "watches": [],
+      "job_states": [],
+      "workers": []
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+[server]
+host = "127.0.0.1"
+port = 8770
+tick_interval_seconds = 0.25
+mcp_path = "/mcp"
+http_timeout_seconds = 30.0
+
+[paths]
+state_directory = "~/.local/state/device-scheduler"
+profiles_path = "~/.config/device-scheduler/profiles.toml"
+backend_profiles_path = "~/.config/device-scheduler/backends.toml"
+continuations_path = "~/.config/device-scheduler/continuations.toml"
+
+[auth]
+token_directory = "~/.config/device-scheduler/tokens"
+token_file = "~/.config/device-scheduler/operator.token"
+
+[allocation]
+gpu_headroom_fraction = 0.10
+gpu_observation_max_age_seconds = 30.0
+
+[policy]
+extension = "builtin.weighted-fair"
+fairness_window_seconds = 86400.0
+class_weights = { interactive = 3.0, normal = 2.0, background = 1.0 }
+owner_weights = {}
+age_quantum_seconds = 180.0
+max_age_boost = 3.0
+large_request_protection_seconds = 300.0
+fairness_penalty = 0.01

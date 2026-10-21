@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "status": "prepared_not_activated",
+  "device_scheduler": {
+    "source_commit": "24da87e21946858ba6a54b140abe49589fc01e79",
+    "configuration": "/home/tumlinson/.config/device-scheduler/config.toml",
+    "unit": "/home/tumlinson/.config/systemd/user/device-scheduler.service",
+    "credentials": "four separate private principals; explicit operations and repository execution roots; no wildcard backend scope",
+    "service_enabled": false
+  },
+  "project_control": {
+    "current_before": "/home/tumlinson/.local/state/project-control/venvs/pc-sealed-0.4.2-0811a3a",
+    "candidate": "/home/tumlinson/.local/state/project-control/venvs/pc-sealed-ds13-a50b617-20261021",
+    "release_manifest_sha256": "7180deee56ee104943d90293d85105a72c839bfe4bd748d74048847ec708deae",
+    "todo_wheel_sha256": "3f37c89fa2fb73612e2ecd88124b40c7e14f4f7d70580e1fa4bd5609357ad305",
+    "authority_mode": "local"
+  },
+  "legacy_registry_roots": [
+    "/tmp/codex-todo-orchestrator-1000",
+    "/run/user/1000/codex-todo-orchestrator"
+  ],
+  "qualification_parent_owner": "foreground:a5f55df4-cf47-46c0-9ad8-ed45b1fc1cb8",
+  "qualification_parent_held": true,
+  "consumer_bundle": "/tmp/device-scheduler-cutover-prep-20261021",
+  "cutover_complete": false
+}

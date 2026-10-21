@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from dataclasses import replace
 import json
 import math
 import os
@@ -129,13 +130,33 @@ def _configured_requirements(value: Any) -> tuple[ResourceRequirement, ...]:
     gpu_requirements = [item for item in requirements if item.kind.casefold() in {"gpu", "nvidia-gpu"}]
     if not gpu_requirements:
         raise BridgeRefusal("this CUDA bridge requires an explicit GPU resource requirement")
-    for requirement in gpu_requirements:
-        if "gpu_memory_bytes" not in requirement.quantities:
-            raise BridgeRefusal("GPU requests require an explicit gpu_memory_bytes estimate")
+    normalized: list[ResourceRequirement] = []
+    for requirement in requirements:
+        if requirement.kind.casefold() not in {"gpu", "nvidia-gpu"}:
+            normalized.append(requirement)
+            continue
+        quantities = dict(requirement.quantities)
+        unsupported = set(quantities) - {"gpu_memory_bytes", "memory_bytes"}
+        if unsupported:
+            raise BridgeRefusal(
+                "the configured NVIDIA adapter only supports byte-valued GPU memory requests; "
+                f"unsupported quantities: {', '.join(sorted(unsupported))}"
+            )
+        if "gpu_memory_bytes" in quantities:
+            if "memory_bytes" in quantities:
+                raise BridgeRefusal("GPU requests cannot specify both gpu_memory_bytes and memory_bytes")
+            # The NVIDIA resource descriptor publishes the canonical capacity
+            # key `memory_bytes`; normalize the legacy bridge spelling before
+            # the allocator performs exact quantity-to-capacity matching.
+            quantities["memory_bytes"] = quantities.pop("gpu_memory_bytes")
+            requirement = replace(requirement, quantities=quantities)
+        if "memory_bytes" not in requirement.quantities:
+            raise BridgeRefusal("GPU requests require an explicit byte-valued GPU memory estimate")
         uuid = requirement.selectors.get("uuid")
         if not isinstance(uuid, str) or not uuid.strip():
             raise BridgeRefusal("GPU requests require a stable UUID selector")
-    return requirements
+        normalized.append(requirement)
+    return tuple(normalized)
 
 
 def _preconditions(value: Any) -> tuple[CapabilityPrecondition, ...]:
