@@ -370,7 +370,16 @@ class HandoffCoordinator:
             record = self._read(handoff_id)
             state = record.get("state")
             if state == HandoffState.UNKNOWN.value:
-                return record
+                if not self._recoverable_unknown_drain(record):
+                    return record
+                record["state"] = HandoffState.DRAINING.value
+                record["resume_state"] = None
+                record["error"] = None
+                expiry_reason = self._pre_eviction_expiry_reason(record)
+                if expiry_reason is not None and not record.get("cancel_requested"):
+                    record["cancel_requested"] = True
+                    record["cancel_reason"] = expiry_reason
+                return self._write(record, event="unknown_drain_reconciled")
             if state != HandoffState.BLOCKED.value:
                 return record
             resume_state = record.get("resume_state")
@@ -397,6 +406,106 @@ class HandoffCoordinator:
                 record.pop("restore_started_at", None)
                 record.pop("readiness_observations", None)
             return self._write(record, event="recovery_requested")
+
+    def _recoverable_unknown_drain(self, record: Mapping[str, Any]) -> bool:
+        """Reconcile only verify_drain unknowns using read-only receipts and inspection."""
+        if (
+            record.get("phase") != "verify_drain"
+            or record.get("resume_state") != HandoffState.DRAINING.value
+            or record.get("job_ids")
+            or self._eviction_started(record)
+        ):
+            return False
+        handoff_id = record.get("handoff_id")
+        backend_ids = HandoffSpec.from_dict(record["spec"]).backend_ids
+        continuation_refs = tuple(record.get("continuation_refs", ()))
+        effects = record.get("effects", {})
+        suspended = set(record.get("suspended_refs", ()))
+        if not isinstance(effects, Mapping) or not set(continuation_refs) <= suspended:
+            return False
+
+        reservation_id = record.get("reservation_id")
+        reservation = self.ledger.get("reservation", str(reservation_id)) if reservation_id else None
+        if not isinstance(reservation, Mapping) or reservation.get("state") != "active":
+            return False
+        try:
+            expires_at = datetime.fromisoformat(str(reservation["expires_at"]).replace("Z", "+00:00"))
+        except (KeyError, TypeError, ValueError):
+            return False
+        if expires_at.tzinfo is None or expires_at <= self._now():
+            return False
+
+        for backend_id in backend_ids:
+            name = f"drain:{backend_id}"
+            effect = effects.get(name)
+            receipt = effect.get("receipt") if isinstance(effect, Mapping) else None
+            operation_id = effect.get("operation_id") if isinstance(effect, Mapping) else None
+            close_receipt = receipt.get("close_receipt") if isinstance(receipt, Mapping) else None
+            if (
+                not isinstance(receipt, Mapping)
+                or receipt.get("state") != "admission_closed"
+                or receipt.get("admission_closed") is not True
+                or receipt.get("operation_id") != handoff_id
+                or not isinstance(close_receipt, Mapping)
+                or close_receipt.get("closed") is not True
+                or close_receipt.get("backend_id") != backend_id
+                or close_receipt.get("operation_id") != handoff_id
+                or not self._completed_effect_journal(operation_id)
+            ):
+                return False
+            try:
+                observation = _mapping(
+                    self.backend_adapter.inspect(self._backend(record, backend_id)),
+                    "backend inspection",
+                )
+            except Exception:
+                return False
+            active, error = self._drained_backend_observation(record, backend_id, observation)
+            if error is not None or active != 0 or observation.get("state") != "running":
+                return False
+            evidence = observation.get("evidence")
+            if not isinstance(evidence, Mapping) or not self._observation_is_fresh(evidence.get("observed_at")):
+                return False
+
+        for continuation_ref in continuation_refs:
+            effect = effects.get(f"suspend:{continuation_ref}")
+            receipt = effect.get("receipt") if isinstance(effect, Mapping) else None
+            operation_id = effect.get("operation_id") if isinstance(effect, Mapping) else None
+            if (
+                not isinstance(receipt, Mapping)
+                or receipt.get("safe_boundary") is not True
+                or receipt.get("durable") is not True
+                or receipt.get("handoff_id") != handoff_id
+                or not self._completed_effect_journal(operation_id)
+            ):
+                return False
+        return True
+
+    def _completed_effect_journal(self, operation_id: Any) -> bool:
+        if not isinstance(operation_id, str) or not operation_id:
+            return False
+        operation = self.ledger.operation(operation_id)
+        return isinstance(operation, Mapping) and operation.get("status") == "complete"
+
+    def _observation_is_fresh(self, value: Any) -> bool:
+        try:
+            observed_at = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            return False
+        if observed_at.tzinfo is None:
+            return False
+        age = self._now() - observed_at.astimezone(timezone.utc)
+        return timedelta(seconds=-5) <= age <= timedelta(seconds=30)
+
+    def _pre_eviction_expiry_reason(self, record: Mapping[str, Any]) -> str | None:
+        spec = HandoffSpec.from_dict(record["spec"])
+        now = self._now()
+        if spec.deadline is not None and spec.deadline <= now:
+            return "handoff deadline expired before backend eviction"
+        for grant in spec.eviction_grants:
+            if grant.expires_at <= now:
+                return f"eviction grant for backend {grant.backend_id} expired before backend eviction"
+        return None
 
     def _block(self, record: dict[str, Any], message: str, *, unknown: bool = False) -> dict[str, Any]:
         if record.get("state") not in {HandoffState.BLOCKED.value, HandoffState.UNKNOWN.value}:
@@ -757,16 +866,76 @@ class HandoffCoordinator:
                 observation = _mapping(self.backend_adapter.inspect(self._backend(record, backend_id)), "backend inspection")
             except Exception as exc:
                 return self._block(record, f"backend {backend_id} drain state is unknown: {type(exc).__name__}: {exc}", unknown=True)
-            active = observation.get("active_generations")
-            if observation.get("state") not in {"observed", "ready", "idle"}:
+            active, observation_error = self._drained_backend_observation(record, backend_id, observation)
+            if observation_error == "state":
                 return self._block(record, f"backend {backend_id} drain state is not known", unknown=True)
-            if isinstance(active, bool) or not isinstance(active, int) or active < 0:
+            if observation_error == "generation":
                 return self._block(record, f"backend {backend_id} active generation count is unknown", unknown=True)
+            if observation_error is not None:
+                return self._block(record, f"backend {backend_id} drain admission is not verified closed", unknown=True)
             if active:
                 if self._now() >= datetime.fromisoformat(str(record["drain_deadline"]).replace("Z", "+00:00")):
                     return self._block(record, f"backend {backend_id} did not reach a turn boundary before the drain timeout")
                 return record
         return self._set_phase(record, "capture_baseline", state=HandoffState.DRAINING.value)
+
+    def _drained_backend_observation(
+        self, record: Mapping[str, Any], backend_id: str, observation: Mapping[str, Any]
+    ) -> tuple[int | None, str | None]:
+        """Validate the live backend state and generation evidence used before eviction."""
+        state = observation.get("state")
+        if state not in {"observed", "ready", "idle", "running"}:
+            return None, "state"
+        active = observation.get("active_generations")
+        if isinstance(active, bool) or not isinstance(active, int) or active < 0:
+            return None, "generation"
+        if state != "running":
+            return active, None
+
+        # ManagedLlamaBackendAdapter reports the supervised process state here;
+        # a running backend is expected while it is drained and before eviction.
+        # Accept it only with a fresh, internally consistent zero-generation
+        # observation and the exact handoff admission epoch still closed.
+        generation = observation.get("generation_observation")
+        generation_state = observation.get("generation_state")
+        generation_count = generation.get("active_generations") if isinstance(generation, Mapping) else None
+        if (
+            generation_state not in {"observed", "ready", "idle"}
+            or not isinstance(generation, Mapping)
+            or generation.get("state") not in {"observed", "ready", "idle"}
+            or isinstance(generation_count, bool)
+            or not isinstance(generation_count, int)
+            or generation_count != active
+        ):
+            return None, "generation"
+
+        handoff_id = record.get("handoff_id")
+        admission = observation.get("admission_observation")
+        admission_epoch = observation.get("admission_epoch")
+        if (
+            observation.get("admission_closed") is not True
+            or observation.get("admission_state") != "closed"
+            or observation.get("admission_operation_id") != handoff_id
+            or isinstance(admission_epoch, bool)
+            or not isinstance(admission_epoch, (int, str))
+            or (isinstance(admission_epoch, int) and admission_epoch < 0)
+            or (isinstance(admission_epoch, str) and not admission_epoch.strip())
+            or not isinstance(admission, Mapping)
+            or admission.get("state") != "observed"
+            or admission.get("admission_closed") is not True
+            or admission.get("admission_operation_id") != handoff_id
+            or admission.get("admission_epoch") != admission_epoch
+        ):
+            return None, "admission"
+
+        effects = record.get("effects", {})
+        drain = effects.get(f"drain:{backend_id}") if isinstance(effects, Mapping) else None
+        receipt = drain.get("receipt") if isinstance(drain, Mapping) else None
+        close_receipt = receipt.get("close_receipt") if isinstance(receipt, Mapping) else None
+        expected_epoch = close_receipt.get("epoch") if isinstance(close_receipt, Mapping) else None
+        if expected_epoch is not None and expected_epoch != admission_epoch:
+            return None, "admission"
+        return active, None
 
     def _capture_reclamation_baselines(self, record: dict[str, Any]) -> dict[str, Any]:
         capture = getattr(self.backend_adapter, "capture_reclamation_baseline", None)
@@ -853,11 +1022,13 @@ class HandoffCoordinator:
                     observation = _mapping(self.backend_adapter.inspect(self._backend(record, backend_id)), "backend inspection")
                 except Exception as exc:
                     return self._block(record, f"backend {backend_id} final pre-eviction inspection is unknown: {type(exc).__name__}: {exc}", unknown=True)
-                active = observation.get("active_generations")
-                if observation.get("state") not in {"observed", "ready", "idle"}:
+                active, observation_error = self._drained_backend_observation(record, backend_id, observation)
+                if observation_error == "state":
                     return self._block(record, f"backend {backend_id} final drain state is not known", unknown=True)
-                if isinstance(active, bool) or not isinstance(active, int) or active < 0:
+                if observation_error == "generation":
                     return self._block(record, f"backend {backend_id} final active-generation count is unknown", unknown=True)
+                if observation_error is not None:
+                    return self._block(record, f"backend {backend_id} final admission state is not verified closed", unknown=True)
                 if active != 0:
                     return self._block(record, f"backend {backend_id} acquired an active generation after drain verification")
                 record, receipt = self._effect(
@@ -1158,6 +1329,16 @@ class HandoffCoordinator:
         if record.get("state") in _TERMINAL_HANDOFFS:
             return record
         phase = record.get("phase")
+        if (
+            phase in {"reserve", "close_admission", "suspend_consumers", "verify_drain", "capture_baseline", "evict"}
+            and not self._eviction_started(record)
+            and not record.get("cancel_requested")
+        ):
+            expiry_reason = self._pre_eviction_expiry_reason(record)
+            if expiry_reason is not None:
+                record["cancel_requested"] = True
+                record["cancel_reason"] = expiry_reason
+                record = self._write(record, event="pre_eviction_cancellation_requested")
         if record.get("cancel_requested"):
             if phase == "reserve" and not record.get("reservation"):
                 return self._cancel_before_eviction(record)

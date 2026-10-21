@@ -3241,7 +3241,7 @@ class Scheduler:
         rows = rows if isinstance(rows, Sequence) and not isinstance(rows, (str, bytes)) else None
         handles, handles_complete = self._active_execution_handles()
         managed_ids: set[int] = set()
-        mapping_state = "observed" if not handles else "unknown"
+        mapping_state = "observed" if not handles and handles_complete else "unknown"
         resolver = getattr(self.executor, "managed_process_ids", None)
         if handles and callable(resolver) and handles_complete:
             try:
@@ -3303,16 +3303,29 @@ class Scheduler:
     def _active_execution_handles(self) -> tuple[list[ExecutionHandle], bool]:
         handles: list[ExecutionHandle] = []
         complete = True
+
+        def include_handle(value: Any) -> None:
+            nonlocal complete
+            handle = _handle(value)
+            if handle is None:
+                complete = False
+            elif handle not in handles:
+                handles.append(handle)
+
         for job in self.ledger.list("jobs"):
             if _state(job.get("state")) not in {"running", "unknown", "cancelling"}:
                 continue
             attempt_id = job.get("attempt_id")
             attempt = self.ledger.get("attempts", str(attempt_id)) if attempt_id else None
-            handle = _handle(attempt.get("execution_handle") if attempt else None)
-            if handle is None:
-                complete = False
-            else:
-                handles.append(handle)
+            include_handle(attempt.get("execution_handle") if attempt else None)
+
+        for backend in self.ledger.list("backend"):
+            # A stopped or evicted backend is known not to own a live process.
+            # Every other state, including unfamiliar or ambiguous states, is
+            # treated as potentially physical so missing handles fail closed.
+            if _state(backend.get("state")) in {"stopped", "evicted", "released"}:
+                continue
+            include_handle(backend.get("execution_handle"))
         return handles, complete
 
     def _capabilities(self) -> dict[str, Any]:
@@ -3389,7 +3402,16 @@ class Scheduler:
             and callable(getattr(adapter, "capture_lease_baseline", None))
             and callable(getattr(adapter, "inspect_lease_release", None))
         ):
+            capacities = resource_data.get("capacities", {})
+            attributes = resource_data.get("attributes", {})
+            capacity = capacities.get("memory_bytes") if isinstance(capacities, Mapping) else None
+            free = attributes.get("memory_free_bytes_observation") if isinstance(attributes, Mapping) else None
+            budget = {}
+            if all(not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value) and value > 0
+                   for value in (capacity, free)):
+                budget["admission_memory_bytes"] = math.floor(min(capacity, free) * (1 - self.allocator.gpu_headroom_fraction))
             return {
+                **budget,
                 "supported": True,
                 "mode": "exclusive_gpu_quiescence",
                 "required_allocation_mode": "exclusive",

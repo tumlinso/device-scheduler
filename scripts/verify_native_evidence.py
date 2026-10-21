@@ -277,7 +277,7 @@ def verify_ds00(root: Path) -> list[str]:
             "feasible round-trip reservation", "TODO_BACKGROUND_HOST_RUNTIME_DIR",
         ),
         "planning/capability-matrix.md": (
-            "Current evidence", "Pending", "No production package", "CUDA controller retirement",
+            "Current evidence", "Pending", "explicit authorized finite request", "CUDA controller retirement",
         ),
         "planning/acceptance.md": (
             "Request–suspend–evict–run–restart journey", "exactly one active allocator",

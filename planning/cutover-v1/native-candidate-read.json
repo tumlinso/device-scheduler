@@ -1,0 +1,58 @@
+{
+  "status": "ok",
+  "packet": "pkt_8d2b6d83e67444bdb923f56977674f05",
+  "data": {
+    "kind": "candidate",
+    "target": "candidate-a22a0b82eb72c7b42ac91b66bb5a72ad8fe66dc76fb89cf3b6a33b2dcf455499",
+    "resolution": "resolved",
+    "result": {
+      "format": "todo-orchestrator.api-document",
+      "kind": "outcome_candidate",
+      "payload": {
+        "attempt": {
+          "definition_revision_id": null,
+          "entity_id": "attempt-45ed509322c4b6579c2976d60962c6a9e6560261cdfac3806f05b8f87aba349e",
+          "incarnation_id": null,
+          "kind": "attempt",
+          "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe"
+        },
+        "candidate": {
+          "definition_revision_id": null,
+          "entity_id": "candidate-a22a0b82eb72c7b42ac91b66bb5a72ad8fe66dc76fb89cf3b6a33b2dcf455499",
+          "incarnation_id": null,
+          "kind": "outcome",
+          "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe"
+        },
+        "disposition": "completed",
+        "note": "DS-00 design baseline, contracts, source inventory and 15 formal native checks. Scoped source is committed; local gate and 10 evidence verifier regressions pass. Live GPU and cutover remain pending.",
+        "reported_at": "2026-10-21T17:12:11.574343+00:00",
+        "reported_by": {
+          "definition_revision_id": null,
+          "entity_id": "actor-bb89e8a2a653b8e44a8fc5fd473d6f59380202e3e57cf48b66ce35c6540d6fa6",
+          "incarnation_id": "inc-19946cb684034dd1949cf863dc1419ae",
+          "kind": "actor",
+          "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe"
+        },
+        "source_digest": "a83d7176cf84227f7a6a509030b0cbcc1f6410f2e5245a20e73f98fa728fbd8d",
+        "state": "accepted",
+        "target": {
+          "definition_revision_id": "definition-0160b69d6228971ee81aceca36c74d713cced7658c26d68dfd2416b57968b274",
+          "entity_id": "DS-00",
+          "incarnation_id": null,
+          "kind": "work_item",
+          "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe"
+        }
+      },
+      "version": 1
+    }
+  },
+  "sources": [],
+  "coverage": {
+    "omissions": [],
+    "semantic_revision": 60,
+    "context_revision": null,
+    "context_project_uuid": null,
+    "observed_at": "2026-10-21T18:57:45Z",
+    "complete": true
+  }
+}

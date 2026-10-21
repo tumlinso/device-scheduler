@@ -1,0 +1,109 @@
+{
+  "device_scheduler": {
+    "attempt_id": "b7d7b895-3769-4436-b31a-de7d3d6bc4da",
+    "cancel_requested": false,
+    "cleanup_verified": true,
+    "error": null,
+    "execution": {
+      "stderr_path": "/tmp/device-scheduler-production-smoke/kda-retry-result.stderr.txt",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_truncated": false,
+      "stdout_path": "/tmp/device-scheduler-production-smoke/kda-retry-result.stdout.txt",
+      "stdout_sha256": "249a4555d1161b0872be83f41fbabb97b15b7b762b5501ec7cad85dfe8b2de78",
+      "stdout_truncated": false
+    },
+    "job_id": "5af703b7-563e-41de-b4d1-c051b1614874",
+    "logs": {
+      "attempt_id": "b7d7b895-3769-4436-b31a-de7d3d6bc4da",
+      "cleanup_verified": true,
+      "job_id": "5af703b7-563e-41de-b4d1-c051b1614874",
+      "stderr": {
+        "omitted_lines": 0,
+        "original_bytes": 0,
+        "returned_bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "text": "",
+        "truncated": false
+      },
+      "stdout": {
+        "omitted_lines": 0,
+        "original_bytes": 239,
+        "returned_bytes": 239,
+        "sha256": "249a4555d1161b0872be83f41fbabb97b15b7b762b5501ec7cad85dfe8b2de78",
+        "text": "{\"gpu_uuid\": \"GPU-21131915-1488-23af-38dd-1743ae1f5cc8\", \"memory_bytes\": 33554432, \"performance_claim\": false, \"pid\": 325223, \"schema_version\": 1, \"status\": \"passed\", \"test\": \"finite-cuda-allocation-copy-free\", \"verified_bytes\": 33554432}\n",
+        "truncated": false
+      }
+    },
+    "owner_id": "kda",
+    "result": {
+      "active_state": "active",
+      "adapter": "systemd-user-unit/v1",
+      "cleanup_verified": true,
+      "evidence": {
+        "adapter": "systemd-user-unit/v1",
+        "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-137ac95440940fbe9d6f2936b7d4faa1.service",
+        "invocation_id": "ae125915c71042aa9b429049cc006a6a",
+        "main_code": "1",
+        "unit_description": "Device Scheduler attempt b7d7b895-3769-4436-b31a-de7d3d6bc4da"
+      },
+      "exit_code": 0,
+      "invocation_id": "ae125915c71042aa9b429049cc006a6a",
+      "logs": "{\"gpu_uuid\": \"GPU-21131915-1488-23af-38dd-1743ae1f5cc8\", \"memory_bytes\": 33554432, \"performance_claim\": false, \"pid\": 325223, \"schema_version\": 1, \"status\": \"passed\", \"test\": \"finite-cuda-allocation-copy-free\", \"verified_bytes\": 33554432}\n",
+      "logs_error": null,
+      "logs_truncated": false,
+      "result": "success",
+      "state": "succeeded",
+      "stdout": "{\"gpu_uuid\": \"GPU-21131915-1488-23af-38dd-1743ae1f5cc8\", \"memory_bytes\": 33554432, \"performance_claim\": false, \"pid\": 325223, \"schema_version\": 1, \"status\": \"passed\", \"test\": \"finite-cuda-allocation-copy-free\", \"verified_bytes\": 33554432}\n",
+      "substate": "exited",
+      "unit_name": "device-scheduler-attempt-137ac95440940fbe9d6f2936b7d4faa1.service"
+    },
+    "scope_binding": {
+      "actions": [
+        "jobs.submit",
+        "jobs.read",
+        "jobs.control"
+      ],
+      "binding_source": "operator_configuration",
+      "execution_roots": [
+        "/home/tumlinson/kda"
+      ],
+      "max_priority": 70,
+      "principal_id": "kda",
+      "resource_requirements": [
+        {
+          "kind": "gpu",
+          "mode": "exclusive",
+          "quantities": {
+            "gpu_memory_bytes": 12884901888
+          },
+          "same_host": true,
+          "selectors": {
+            "uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8"
+          }
+        },
+        {
+          "kind": "cpu",
+          "mode": "shared",
+          "quantities": {
+            "cores": 2
+          },
+          "same_host": true
+        },
+        {
+          "kind": "memory",
+          "mode": "shared",
+          "quantities": {
+            "bytes": 2147483648
+          },
+          "same_host": true
+        }
+      ],
+      "scope_digest": "dcfcd0beb002852786107d18f523e289e7fe7d39a238e2d060b4ff162b859dae"
+    },
+    "state": "succeeded"
+  },
+  "exit_code": 0,
+  "request_id": "ds-cutover-kda-0e5794fe0b4142a4b772ef776ac68f01",
+  "schema_version": 1,
+  "status": "ok"
+}

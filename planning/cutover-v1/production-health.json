@@ -1,0 +1,456 @@
+{
+  "observed_at": "2026-10-21T19:13:14.348965+00:00",
+  "endpoints": {
+    "project-control": {
+      "/healthz": {
+        "http_status": 200,
+        "body": {
+          "status": "ok",
+          "jobs": {
+            "dispatcher": "running",
+            "last_error": null,
+            "durable": true
+          },
+          "central_inference": {
+            "status": "unavailable",
+            "reason": "central_supervisor_unavailable"
+          }
+        }
+      },
+      "/readyz": {
+        "http_status": 200,
+        "body": {
+          "status": "ready",
+          "core": {
+            "status": "available",
+            "configuration": "valid",
+            "workflow_engine": "available",
+            "fingerprint": "613ec4537777eb0c434906f3b87493aea757d97c31e34de9518b9e29bfe0db33"
+          },
+          "central_inference": {
+            "status": "unavailable",
+            "reason": "central_supervisor_unavailable"
+          },
+          "optional_content": {
+            "status": "available",
+            "catalog_sha256": "cfbaba72645d55c6f445d40ba1e7e8b9e6f76d33606243b3b7ccf163cd030a17",
+            "skill_count": 4
+          }
+        }
+      },
+      "/version": {
+        "http_status": 200,
+        "body": {
+          "name": "project-control",
+          "version": "0.4.2",
+          "tool_schema_version": 12,
+          "features": {
+            "automatic_overview": false
+          }
+        }
+      }
+    },
+    "device-scheduler": {
+      "/healthz": {
+        "http_status": 200,
+        "body": {
+          "status": "ok",
+          "service": "device-scheduler",
+          "api_version": 1
+        }
+      },
+      "/readyz": {
+        "http_status": 200,
+        "body": {
+          "status": "ready",
+          "service": "device-scheduler",
+          "operations": [
+            "resources.list",
+            "resources.capabilities",
+            "leases.request",
+            "leases.get",
+            "leases.list",
+            "leases.renew",
+            "leases.release",
+            "jobs.submit",
+            "jobs.get",
+            "jobs.list",
+            "jobs.wait",
+            "jobs.logs",
+            "jobs.control",
+            "backends.register",
+            "backends.get",
+            "backends.list",
+            "backends.control",
+            "backends.attach",
+            "handoffs.submit",
+            "handoffs.get",
+            "handoffs.list",
+            "handoffs.control",
+            "schedules.put",
+            "schedules.get",
+            "schedules.list",
+            "schedules.control",
+            "events.publish",
+            "policies.explain",
+            "policies.simulate",
+            "admin.status",
+            "admin.reconcile",
+            "admin.backup"
+          ],
+          "scheduler": {
+            "status": "healthy",
+            "held_lease_count": 0,
+            "held_resource_ids": [],
+            "unresolved_lease_count": 0,
+            "unresolved_job_count": 0,
+            "unresolved_operation_count": 0,
+            "unresolved_backend_count": 0,
+            "unavailable_resource_ids": [],
+            "unresolved_leases": [],
+            "unresolved_jobs": [],
+            "unresolved_operations": [],
+            "unresolved_backends": [],
+            "adapters": {
+              "adapters": [
+                {
+                  "adapter_id": "linux-host",
+                  "capabilities": [
+                    {
+                      "name": "host-cpu-count",
+                      "supported": true,
+                      "enforcement": "observational",
+                      "details": {
+                        "source": "os.cpu_count",
+                        "unit": "cores",
+                        "count_semantics": "logical CPUs",
+                        "scope": "whole host"
+                      }
+                    },
+                    {
+                      "name": "host-memory-capacity",
+                      "supported": true,
+                      "enforcement": "observational",
+                      "details": {
+                        "source": "/proc/meminfo:MemTotal"
+                      }
+                    },
+                    {
+                      "name": "host-memory-available",
+                      "supported": true,
+                      "enforcement": "observational",
+                      "details": {
+                        "source": "/proc/meminfo:MemAvailable",
+                        "missing_value": "unknown"
+                      }
+                    },
+                    {
+                      "name": "per-job-cgroup-limits",
+                      "supported": true,
+                      "enforcement": "advisory",
+                      "details": {
+                        "provided_by": "systemd-user-unit-adapter",
+                        "host_qualification_required": true
+                      }
+                    }
+                  ]
+                },
+                {
+                  "adapter_id": "nvidia-smi",
+                  "capabilities": [
+                    {
+                      "name": "nvidia-gpu-inventory",
+                      "supported": true,
+                      "enforcement": "observational",
+                      "details": {
+                        "source": "nvidia-smi query-gpu",
+                        "identity": "UUID"
+                      }
+                    },
+                    {
+                      "name": "gpu-memory-observation",
+                      "supported": true,
+                      "enforcement": "observational",
+                      "details": {
+                        "unit": "bytes",
+                        "source_unit": "MiB"
+                      }
+                    },
+                    {
+                      "name": "gpu-memory-budget",
+                      "supported": true,
+                      "enforcement": "advisory",
+                      "details": {
+                        "reason": "inventory telemetry does not enforce per-workload limits"
+                      }
+                    },
+                    {
+                      "name": "compute-process-telemetry",
+                      "supported": true,
+                      "enforcement": "observational",
+                      "details": {
+                        "scope": "nvidia-smi-visible-compute-applications"
+                      }
+                    },
+                    {
+                      "name": "gpu-quiescence-observation",
+                      "supported": true,
+                      "enforcement": "observational",
+                      "details": {
+                        "requires": "consecutive successful empty process observations"
+                      }
+                    },
+                    {
+                      "name": "gpu.quiescence",
+                      "supported": true,
+                      "enforcement": "observational",
+                      "details": {
+                        "precondition_schema_version": 1,
+                        "parameters": {
+                          "consecutive_samples": "integer 1..20",
+                          "interval_seconds": "number 0..10",
+                          "timeout_seconds": "number 0..60",
+                          "max_utilization_percent": "integer 0..100, default 0",
+                          "minimum_free_bytes": "optional non-negative integer, never below grant plus configured headroom"
+                        },
+                        "binds_to": "GPU allocations and descriptors in ExecutionContext",
+                        "scope": "read-only nvidia-smi-visible compute telemetry"
+                      }
+                    },
+                    {
+                      "name": "device-exclusive-admission",
+                      "supported": true,
+                      "enforcement": "advisory",
+                      "details": {
+                        "enforced_by": "scheduler ledger",
+                        "does_not_terminate_unmanaged_processes": true
+                      }
+                    },
+                    {
+                      "name": "gpu-topology-links",
+                      "supported": true,
+                      "enforcement": "observational",
+                      "details": {
+                        "source": "nvidia-smi topo -m",
+                        "contention_established": false
+                      }
+                    },
+                    {
+                      "name": "topology-derived-profiler-isolation-domains",
+                      "supported": true,
+                      "enforcement": "advisory",
+                      "details": {
+                        "resource_kind": "isolation",
+                        "requires": "complete symmetric GPU topology matrix",
+                        "scope": "scheduler admission only",
+                        "does_not_claim_hardware_contention": true
+                      }
+                    },
+                    {
+                      "name": "external-gpu-lease-observation",
+                      "supported": true,
+                      "enforcement": "observational",
+                      "details": {
+                        "requires": "exclusive GPU-only lease and exact discovered resource descriptors",
+                        "operations": [
+                          "capture_lease_baseline",
+                          "inspect_lease_release"
+                        ],
+                        "headroom_bytes": 536870912,
+                        "side_effects": "read-only nvidia-smi observations",
+                        "limitations": "does not prove hostile-process isolation"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "adapter_id": "systemd-user-unit",
+                  "capabilities": [
+                    {
+                      "name": "systemd-transient-user-service",
+                      "supported": true,
+                      "enforcement": "advisory",
+                      "details": {
+                        "adapter": "systemd-user-unit/v1",
+                        "host_qualified": false,
+                        "restart_survival": "host-and-user-manager-running"
+                      }
+                    },
+                    {
+                      "name": "process-tree-cgroup-supervision",
+                      "supported": true,
+                      "enforcement": "advisory",
+                      "details": {
+                        "adapter": "systemd-user-unit/v1",
+                        "host_qualified": false,
+                        "stop": "systemd-unit-only",
+                        "requires_verified_cgroup_cleanup": true
+                      }
+                    },
+                    {
+                      "name": "cpu-memory-task-limits",
+                      "supported": true,
+                      "enforcement": "advisory",
+                      "details": {
+                        "adapter": "systemd-user-unit/v1",
+                        "host_qualified": false,
+                        "properties": [
+                          "CPUQuota",
+                          "MemoryMax",
+                          "TasksMax"
+                        ]
+                      }
+                    },
+                    {
+                      "name": "granted-resource-cgroup-limits",
+                      "supported": true,
+                      "enforcement": "advisory",
+                      "details": {
+                        "adapter": "systemd-user-unit/v1",
+                        "host_qualified": false,
+                        "cpu_allocation": "systemd CPUQuota as granted core count times 100 percent",
+                        "host_memory_allocation": "systemd MemoryMax in bytes",
+                        "profile_limits": "stricter of registered profile limit and granted allocation",
+                        "gpu_memory": "accounting only; no hardware memory limit claimed"
+                      }
+                    },
+                    {
+                      "name": "grant-bound-cuda-visible-devices",
+                      "supported": true,
+                      "enforcement": "advisory",
+                      "details": {
+                        "adapter": "systemd-user-unit/v1",
+                        "host_qualified": false,
+                        "source": "allocated NVIDIA resource UUIDs",
+                        "cpu_only": "CUDA_VISIBLE_DEVICES is empty",
+                        "limitation": "cooperative visibility, not hostile-code isolation"
+                      }
+                    },
+                    {
+                      "name": "finite-job-runtime-limit",
+                      "supported": true,
+                      "enforcement": "advisory",
+                      "details": {
+                        "adapter": "systemd-user-unit/v1",
+                        "host_qualified": false,
+                        "property": "RuntimeMaxSec",
+                        "applies_to": "job-purpose launches only"
+                      }
+                    },
+                    {
+                      "name": "bounded-output-observation",
+                      "supported": true,
+                      "enforcement": "observational",
+                      "details": {
+                        "adapter": "systemd-user-unit/v1",
+                        "host_qualified": false,
+                        "source": "systemd-journal",
+                        "max_bytes": 262144
+                      }
+                    }
+                  ]
+                }
+              ],
+              "external_leases": {
+                "supported": true,
+                "modes": [
+                  "exclusive_gpu_quiescence"
+                ],
+                "gpu_observation_constraints": {
+                  "allocation_mode": "exclusive",
+                  "bundle": "GPU-only and single-adapter",
+                  "release": "repeatable read-only quiescence and baseline verification"
+                },
+                "unsupported_without_a_trusted_reclamation_adapter": [
+                  "cpu",
+                  "memory",
+                  "mixed-adapter bundles"
+                ]
+              }
+            },
+            "scheduler": {
+              "policy_id": "builtin.weighted-fair",
+              "policy_version": "1",
+              "policy_configuration": {
+                "api_version": "1",
+                "policy_id": "builtin.weighted-fair",
+                "version": "1",
+                "source": {
+                  "kind": "builtin",
+                  "name": "builtin.weighted-fair"
+                },
+                "parameters": {
+                  "class_weights": {
+                    "interactive": 3.0,
+                    "normal": 2.0,
+                    "background": 1.0
+                  },
+                  "owner_weights": {},
+                  "age_quantum_seconds": 180.0,
+                  "max_age_boost": 3.0,
+                  "large_request_protection_seconds": 300.0,
+                  "fairness_penalty": 0.01
+                },
+                "fairness_window_seconds": 86400.0
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "units": {
+    "project-control.service": {
+      "MainPID": "317551",
+      "ExecMainStatus": "0",
+      "ActiveState": "active",
+      "SubState": "running"
+    },
+    "device-scheduler.service": {
+      "MainPID": "317545",
+      "ExecMainStatus": "0",
+      "ActiveState": "active",
+      "SubState": "running"
+    },
+    "project-control-inference.service": {
+      "MainPID": "0",
+      "ExecMainStatus": "0",
+      "ActiveState": "inactive",
+      "SubState": "dead"
+    }
+  },
+  "selected_release": "/home/tumlinson/.local/state/project-control/venvs/pc-sealed-ds13-budget-a50b617-20261021",
+  "release_manifest_sha256": "a6cd423fe34e00e5099781f6e736bebef2865d4ae09c82745d7c61f7d2878571",
+  "physical_cleanup": {
+    "all_gpu_memory_used_mib_zero": true,
+    "compute_processes": [],
+    "gpu_rows": [
+      "GPU-21131915-1488-23af-38dd-1743ae1f5cc8, 0",
+      "GPU-cf22c41f-5b58-77b1-3535-8fadd1ca6505, 0",
+      "GPU-d745da9c-7649-8334-41f1-483afa6f3206, 0",
+      "GPU-6c1cac7f-a360-0aef-ba98-2828bfd1db1a, 0"
+    ]
+  },
+  "executed_helpers": {
+    "fence-device-scheduler-legacy.py": {
+      "path": "/home/tumlinson/.local/state/device-scheduler/cutover-backups/fence-20261021T185433Z/executed-helpers/fence-device-scheduler-legacy.py",
+      "sha256": "b6f8b4b87309dd3d43c8cf060f22a7562e2defed99befb1daa5f16b962ddbaf3"
+    },
+    "verify_pc_ds_lease.py": {
+      "path": "/home/tumlinson/.local/state/device-scheduler/cutover-backups/fence-20261021T185433Z/executed-helpers/verify_pc_ds_lease.py",
+      "sha256": "a9b6094b07863d3a15ff00db02898d49567c445bc9ed5952e4b1de09b393556d"
+    },
+    "verify_ds_pc_candidate.py": {
+      "path": "/home/tumlinson/.local/state/device-scheduler/cutover-backups/fence-20261021T185433Z/executed-helpers/verify_ds_pc_candidate.py",
+      "sha256": "d3c22bb9a46df02358a2069c1d4348472846185a21f6549e137466f6d99ca9a8"
+    },
+    "select-fenced-ds-authority.py": {
+      "path": "/home/tumlinson/.local/state/device-scheduler/cutover-backups/fence-20261021T185433Z/executed-helpers/select-fenced-ds-authority.py",
+      "sha256": "8411b0c243f478c4e3367f9543eb7440267d44ce7eecc6aaaf40272e3e72d75c"
+    },
+    "audit-ds-retirement.py": {
+      "path": "/home/tumlinson/.local/state/device-scheduler/cutover-backups/fence-20261021T185433Z/executed-helpers/audit-ds-retirement.py",
+      "sha256": "bf3fec1f33c7e8b84e68055dbb724cd96a6f3d42e3c212aa9f270f7373d40e95"
+    }
+  }
+}

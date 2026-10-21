@@ -1,0 +1,6 @@
+/tmp/device-scheduler-cutover-prep-20261021/candidates/configs/kda.controller.json: typed requirements and scope valid
+/tmp/device-scheduler-cutover-prep-20261021/candidates/configs/kernelbender.controller.json: typed requirements and scope valid
+kda: scoped authentication and read-only job query succeeded
+kernelbender: scoped authentication and read-only job query succeeded
+All target hashes, archives, candidate schemas, scoped roots, and interpreter checks passed.
+Cutover files installed. Exact rollback bytes: /home/tumlinson/.local/state/device-scheduler/cutover-backups/20261021T190407Z

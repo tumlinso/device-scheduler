@@ -1,0 +1,26 @@
+{
+  "observed_at": "2026-10-21T19:09:26.075360+00:00",
+  "status": "passed",
+  "old_release": "/home/tumlinson/.local/state/project-control/venvs/pc-sealed-0.4.2-0811a3a/bin/python",
+  "legacy_coordinator_checks": [
+    {
+      "root": "/tmp/codex-todo-orchestrator-1000",
+      "refused": true,
+      "error_type": "OperationalError",
+      "reason": "unable to open database file"
+    },
+    {
+      "root": "/run/user/1000/codex-todo-orchestrator",
+      "refused": true,
+      "error_type": "OperationalError",
+      "reason": "unable to open database file"
+    }
+  ],
+  "cuda_entrypoint": {
+    "refused": true,
+    "exit_code": 2,
+    "message": "cuda_controller.py is retired for host execution. It cannot admit, inspect, launch, cancel, qualify, or report legacy controller work. Submit a bounded job with `device-scheduler job submit --payload-file <job-spec.json>` and inspect it with `device-scheduler job get|wait|logs <job-id>`. Historical controller receipts remain archival evidence only."
+  },
+  "new_authority": "device-scheduler",
+  "hostile_same_user_isolation_claimed": false
+}

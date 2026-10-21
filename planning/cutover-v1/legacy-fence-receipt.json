@@ -1,0 +1,134 @@
+{
+  "backup_dir": "/home/tumlinson/.local/state/device-scheduler/cutover-backups/fence-20261021T185433Z",
+  "created_utc": "20261021T185433Z",
+  "note": "No SQLite rows were edited; rollback requires DS to be stopped first.",
+  "nvidia": {
+    "compute_processes": [],
+    "gpus": [
+      {
+        "memory_used_mib": 0,
+        "uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8"
+      },
+      {
+        "memory_used_mib": 0,
+        "uuid": "GPU-cf22c41f-5b58-77b1-3535-8fadd1ca6505"
+      },
+      {
+        "memory_used_mib": 0,
+        "uuid": "GPU-d745da9c-7649-8334-41f1-483afa6f3206"
+      },
+      {
+        "memory_used_mib": 0,
+        "uuid": "GPU-6c1cac7f-a360-0aef-ba98-2828bfd1db1a"
+      }
+    ]
+  },
+  "procfs_exclusions": [
+    {
+      "ordinary_workloads_exempted": false,
+      "pid": 2063,
+      "reason": "procfs denies descriptor reads; both retired units have zero FD stores",
+      "role": "verified systemd --user manager in init.scope"
+    },
+    {
+      "cgroup": "0::/user.slice/user-1000.slice/user@1000.service/init.scope",
+      "ordinary_workloads_exempted": false,
+      "pid": 2089,
+      "reason": "non-dumpable OS session process; not an allocator workload",
+      "role": "(sd-pam)"
+    },
+    {
+      "cgroup": "0::/user.slice/user-1000.slice/session-18.scope",
+      "ordinary_workloads_exempted": false,
+      "pid": 15736,
+      "reason": "non-dumpable OS session process; not an allocator workload",
+      "role": "sshd: tumlinson@pts/0"
+    },
+    {
+      "cgroup": "0::/user.slice/user-1000.slice/session-128.scope",
+      "ordinary_workloads_exempted": false,
+      "pid": 257660,
+      "reason": "non-dumpable OS session process; not an allocator workload",
+      "role": "sshd: tumlinson@notty"
+    }
+  ],
+  "registries": [
+    {
+      "backup": {
+        "raw_sidecars": [
+          {
+            "archive": "/home/tumlinson/.local/state/device-scheduler/cutover-backups/fence-20261021T185433Z/codex-todo-orchestrator-1000-raw/physical-resources.sqlite3",
+            "bytes": 53248,
+            "sha256": "cab87321f603bef6f982fe2b761610d339b205a375f161ac1f6ffe1ca34531a1",
+            "source": "/tmp/codex-todo-orchestrator-1000/physical-resources.sqlite3"
+          },
+          {
+            "archive": "/home/tumlinson/.local/state/device-scheduler/cutover-backups/fence-20261021T185433Z/codex-todo-orchestrator-1000-raw/physical-resources.sqlite3-wal",
+            "bytes": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "source": "/tmp/codex-todo-orchestrator-1000/physical-resources.sqlite3-wal"
+          },
+          {
+            "archive": "/home/tumlinson/.local/state/device-scheduler/cutover-backups/fence-20261021T185433Z/codex-todo-orchestrator-1000-raw/physical-resources.sqlite3-shm",
+            "bytes": 32768,
+            "sha256": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+            "source": "/tmp/codex-todo-orchestrator-1000/physical-resources.sqlite3-shm"
+          },
+          {
+            "present": false,
+            "source": "/tmp/codex-todo-orchestrator-1000/physical-resources.sqlite3-journal"
+          }
+        ],
+        "sqlite_backup": "/home/tumlinson/.local/state/device-scheduler/cutover-backups/fence-20261021T185433Z/codex-todo-orchestrator-1000-physical-resources.sqlite3.sqlite-backup",
+        "sqlite_backup_sha256": "39cee07fa206436f23e5303a2badfd693e88c41261605f42d6da09fa31b71380"
+      },
+      "database": "/tmp/codex-todo-orchestrator-1000/physical-resources.sqlite3",
+      "owner_count": 1,
+      "reservation_count": 3,
+      "retired_original": "/tmp/codex-todo-orchestrator-1000/physical-resources.sqlite3.retired-20261021T185433Z",
+      "tombstone_directory": "/tmp/codex-todo-orchestrator-1000/physical-resources.sqlite3"
+    },
+    {
+      "backup": {
+        "raw_sidecars": [
+          {
+            "archive": "/home/tumlinson/.local/state/device-scheduler/cutover-backups/fence-20261021T185433Z/codex-todo-orchestrator-raw/physical-resources.sqlite3",
+            "bytes": 53248,
+            "sha256": "5893479e12a2ef72413784d7de963d5735066a0545c7ba177caa0a50650282fd",
+            "source": "/run/user/1000/codex-todo-orchestrator/physical-resources.sqlite3"
+          },
+          {
+            "archive": "/home/tumlinson/.local/state/device-scheduler/cutover-backups/fence-20261021T185433Z/codex-todo-orchestrator-raw/physical-resources.sqlite3-wal",
+            "bytes": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "source": "/run/user/1000/codex-todo-orchestrator/physical-resources.sqlite3-wal"
+          },
+          {
+            "archive": "/home/tumlinson/.local/state/device-scheduler/cutover-backups/fence-20261021T185433Z/codex-todo-orchestrator-raw/physical-resources.sqlite3-shm",
+            "bytes": 32768,
+            "sha256": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+            "source": "/run/user/1000/codex-todo-orchestrator/physical-resources.sqlite3-shm"
+          },
+          {
+            "present": false,
+            "source": "/run/user/1000/codex-todo-orchestrator/physical-resources.sqlite3-journal"
+          }
+        ],
+        "sqlite_backup": "/home/tumlinson/.local/state/device-scheduler/cutover-backups/fence-20261021T185433Z/codex-todo-orchestrator-physical-resources.sqlite3.sqlite-backup",
+        "sqlite_backup_sha256": "49add1d3d5554831c673b445f8f43e45565198c2492c843dbae7b9175509014d"
+      },
+      "database": "/run/user/1000/codex-todo-orchestrator/physical-resources.sqlite3",
+      "owner_count": 5,
+      "reservation_count": 12,
+      "retired_original": "/run/user/1000/codex-todo-orchestrator/physical-resources.sqlite3.retired-20261021T185433Z",
+      "tombstone_directory": "/run/user/1000/codex-todo-orchestrator/physical-resources.sqlite3"
+    }
+  ],
+  "schema": "device-scheduler-legacy-fence/v1",
+  "status": "applied",
+  "uid": 1000,
+  "units": {
+    "project-control-inference.service": "loaded/inactive",
+    "project-control.service": "loaded/inactive"
+  }
+}

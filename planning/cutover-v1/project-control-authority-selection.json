@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "mode": "device_scheduler",
+  "base_url": "http://127.0.0.1:8770",
+  "token_file": "/home/tumlinson/.config/device-scheduler/project-control.token",
+  "model_backend_id": null,
+  "selected": true,
+  "route": "Project Control public write_resource_authority API after verified legacy registry retirement",
+  "cli_limitation": "select-device-scheduler assumes a retired registry path is a SQLite file; preserved fence used instead of reopening the old database",
+  "legacy_fence_receipt": "planning/cutover-v1/legacy-fence-receipt.json"
+}

@@ -1,0 +1,63 @@
+{
+  "project-control": {
+    "head": "a50b617ea5b948b9594be9021e8cea60c941c4fd",
+    "integration_state": "working-tree edits preserved; no reset or external commit performed",
+    "changed_source_hashes": {
+      "src/project_control/adapters/todo.py": "3ea636f6d3bbc70ff026155cad46d00d97eec731d78a0b90b6967c8b856c0b2f",
+      "src/project_control/as1_jobs.py": "9beceba4e141ef018a4b69fefe939bc1c40a1c2e89a9125e59c78bf3d5d6d827",
+      "src/project_control/assistance/lab_gpu.py": "2d6b8e3dd52bd554d93880d0a692a69b9b3ca3239ff40a90be378421124a9175",
+      "src/project_control/cli.py": "6846d63a6963ecbdb03c27d8477403e24ad83a868ba470f009d192911113aa8f",
+      "src/project_control/compact_workflow.py": "82198b680894221cdc128fc695ffcc4ac71ccbf1df8ebce22fa688cf800b24c8",
+      "src/project_control/device_scheduler.py": "28814025d2f4fe9454d034e941c5f5c44d012b556a364a84dad5013ffc04fde7",
+      "src/project_control/host_resources/__init__.py": "fa24024e2e6ee440e1cc5e5b16405d2494874ea2cd347e11d14758b4c1214018",
+      "src/project_control/host_resources/coordinator.py": "4adb251499034f8c608b2fc338b2a321a98328a18e9e4b4aad0db0f7d3a66ec4",
+      "src/project_control/host_resources/facade.py": "b880182388bc431b55889b8a09a8e495ab681354b51319b96857f781903885f5",
+      "src/project_control/host_resources/runtime.py": "e4c92bfebd01cb67e0e78c8148815fea07e6cbd6e8c0d266b41608361bb7b992",
+      "src/project_control/local_runtime/local_worker/controller.py": "4e9cd351dd96ab6f08b23684aa3748b751a1a56c28435984ef6b2cb9aca915ee",
+      "src/project_control/local_runtime/local_worker/supervisor.py": "1dcc41bfd0e1dc080ed1d13b761d41852b08e4ef13a66ae543c1d567af373717",
+      "src/project_control/native_providers.py": "81ca2efc795bf0ef46b286982d96714f4b1978756068856a82a7c718ec7724d2",
+      "src/project_control/native_workflow.py": "9e9a81845d0762c3f648a6cfb8968b312be8ad6c40fd105b5a3bb33480f92bfb",
+      "src/project_control/observer_analysis.py": "9284ad9c8cd01e4ad31ff368dcd26de508776e2e81ff08b80a18a42d7a363e94",
+      "src/project_control/services/performance_probe.py": "4f231556e51d58f1a1ac67cf35b35695513b8b437e2aa38303fc282267df68fb",
+      "tests/assistance/test_lab_gpu.py": "91480dfe1d6062ed9c7086f05d4bbdb6903eeea1519d7e12ee58657d5fea43ca",
+      "tests/local_runtime/test_device_scheduler_managed_backend.py": "b5f8c2465f4ec80d4738d25c849cad38e057d659602f223e3bc8ee06e38495b3",
+      "tests/test_compact_workflow.py": "ad95bbc026ee5833349a8fe1173ddca1afff3a2589a384937a4df985e4daac60",
+      "tests/test_device_scheduler_cli.py": "070c0ed2a33e0fe0550135cfc127b8d003ee77c989d063410cb60cb2794151bc",
+      "tests/test_device_scheduler_resources.py": "dbf5270827cc4d850f72561c3a22583727e4050967abf9fa0993a18be1e1f5b2",
+      "tests/test_native_todo_read.py": "d914ae09f9ecce2b50ce9a48cfda461234ff72a19983952a29184bc1f0773eaa",
+      "tests/test_todo_authority.py": "1403e49950dde0d4fcd1ae885a0eb6ee6339fd72a1923c9c71b2ee2c496d831b",
+      "tests/todo/test_native_run_retirement.py": "b069e86240c5023feb315f42917328d23efa898d6651607c465a055401d3176f"
+    }
+  },
+  "FrameShift": {
+    "head": "659ce1e2e618d96f8f46f69dd67bdc8ff691ef5e",
+    "integration_state": "working-tree edits preserved; no reset or external commit performed",
+    "changed_source_hashes": {
+      "docs/service.md": "902aaadb0f133e27d085da16ae4dd93fdd210b8eb0938d069a57e2e65996a74b",
+      "src/frameshift/__main__.py": "36a7ea7241e00e34007a8b5e9d04cec24b20f1b5b2655dcf3ad28058d81e1cf3",
+      "src/frameshift/backends/llama.py": "90927ac6d71cec9b21b1cb97b9dc2705838a740d2b1dadeb8a8dab81e4130b2f",
+      "src/frameshift/client.py": "31d6c2cdae51f264ba03eeeeeed9efaf13bcf16f9ac4229797435dfc7aceee4e",
+      "src/frameshift/engine.py": "2b883418c29facc5791d2cb0ed2f7fbe1e00136308176ea5d99d152d55b4275f",
+      "src/frameshift/service.py": "bb3a8a0febf6b064752e6adc6ed19f836dc7559eebff938bc3708ceab6030572",
+      "src/frameshift/store.py": "8e08f55b6aca26b04c44b8161884c4533fbaae3eaa679267109140d9f478d67f",
+      "tests/test_scheduler_handoff.py": "3b7e02f6d8d7b852e2d165082100fba18f08c033d547ef80afdfc432bc76dc2b"
+    }
+  },
+  "kda": {
+    "head": "277c79b8cdd1d13c34a0dfd132b8bb504bcb5afc",
+    "integration_state": "working-tree edits preserved; no reset or external commit performed",
+    "changed_source_hashes": {
+      "kda_experiments/controller_launcher.py": "bf8d2ea4a507a732387dfe1153e38e8143903537d6b13af4dd3b622f58ef43ca",
+      "tests/test_controller_launcher.py": "8f1148824240ab180a779005489444dd00b3f97cba35224da4269deaff238b5c",
+      "tests/test_study_budget.py": "808189c614afaaedc6bb8c1ce7f093a4862c458ab904f7566386149e953ce095"
+    }
+  },
+  "KernelBender": {
+    "head": "2e19a747a3be2abfb12243db809a3e85ae8b5d42",
+    "integration_state": "working-tree edits preserved; no reset or external commit performed",
+    "changed_source_hashes": {
+      "evaluation/private/materialize_tasks.py": "0990e76f17b9be261bd46f845a82ee9a99594809c587641293a5c3b3775d9e86",
+      "evaluation/results/native-v1/driver.py": "17f335c8ad4984157e9e7d0d66ef6008f01265f9f123edf8f9e6fb010f61b4b7"
+    }
+  }
+}

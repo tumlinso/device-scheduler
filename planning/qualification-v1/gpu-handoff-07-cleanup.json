@@ -1,0 +1,25 @@
+{
+  "observed_at": "2026-10-21T18:45:02.124365+00:00",
+  "qualification_only": true,
+  "frame_id": "d9e73166-49ea-43e9-80b2-4447c0cbf250",
+  "frame_state": "cancelled",
+  "frame_cancellation": "FrameShift public SQLiteStore.cancel lifecycle API",
+  "execution_cleanup": {
+    "state": "unknown",
+    "reason": "unit was unloaded after systemd acknowledged stop",
+    "unit_name": "device-scheduler-attempt-2e42b42985972d61359c16d31ea3c078.service",
+    "invocation_id": "0a761119744c4ba5b1a6ba7d3277be84",
+    "evidence": {
+      "adapter": "systemd-user-unit/v1",
+      "unit_description": "Device Scheduler attempt backend-restore-386046be124feb8c29afd7a7b36f4423",
+      "invocation_id": "0a761119744c4ba5b1a6ba7d3277be84",
+      "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-2e42b42985972d61359c16d31ea3c078.service",
+      "post_stop_unit_state": "not-found"
+    },
+    "operation_id": "qualification-seventh-expired-fixture-cleanup",
+    "stop_requested": true,
+    "cleanup_verified": true
+  },
+  "private_handoff_state": "unknown/verify_drain, historical effects and reservation preserved; no job or eviction occurred",
+  "parent_pool_release_authorized": false
+}

@@ -431,6 +431,50 @@ def _toml_mapping(values: Mapping[str, str]) -> str:
     return "{ " + ", ".join(f"{key} = {_toml_string(value)}" for key, value in sorted(values.items())) + " }"
 
 
+def _qualification_output_schema(gpu_uuid: str) -> dict[str, Any]:
+    """Allow only the granted probe request or a bounded result summary."""
+    return {
+        "type": "object",
+        "oneOf": [
+            {
+                "type": "object",
+                "properties": {
+                    "action": {"const": "tool_request"},
+                    "toolkit_id": {"const": TOOLKIT_ID},
+                    "arguments": {
+                        "type": "object",
+                        "properties": {
+                            "operation": {"const": "allocate_read_free"},
+                            "gpu_uuid": {"const": gpu_uuid},
+                            "memory_bytes": {"const": PROBE_BYTES},
+                        },
+                        "required": ["operation", "gpu_uuid", "memory_bytes"],
+                        "additionalProperties": False,
+                    },
+                },
+                "required": ["action", "toolkit_id", "arguments"],
+                "additionalProperties": False,
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "action": {"const": "complete"},
+                    "payload": {
+                        "type": "object",
+                        "properties": {
+                            "report": {"type": "string", "minLength": 1, "maxLength": 120},
+                        },
+                        "required": ["report"],
+                        "additionalProperties": False,
+                    },
+                },
+                "required": ["action", "payload"],
+                "additionalProperties": False,
+            },
+        ],
+    }
+
+
 def _port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
@@ -758,9 +802,15 @@ def _write_scheduler_configuration(
         f"token_file = {_toml_string(str(token_file))}\n"
     ))
     execution = work / "profiles.toml"
+    schema_file = work / "qualification-output-schema.json"
+    private_write(
+        schema_file,
+        json.dumps(_qualification_output_schema(gpu_uuid), sort_keys=True, separators=(",", ":")) + "\n",
+    )
     argv = [
         str(llama_binary), "-m", str(model), "--n-gpu-layers", "1", "--ctx-size", "4096",
         "--batch-size", "32", "--ubatch-size", "32", "--parallel", "1", "--slots",
+        "--temp", "0", "--seed", "42", "--json-schema-file", str(schema_file),
         "--host", "127.0.0.1", "--port", str(llama_port), "--alias", "device-scheduler-qualification",
     ]
     profile = (
@@ -1295,7 +1345,7 @@ async def execute_qualification(args: argparse.Namespace, guard: ParentGrantGuar
             "restore_timeout_seconds": 360, "deadline": deadline.isoformat(),
         }
         guard.verify(force=True)
-        submitted = await ds_client.submit_handoff({
+        submitted = await ds_client.call("handoffs.submit", {
             "spec": handoff_spec, "idempotency_key": f"qualify-{handoff_id}",
         })
         report["handoff_submission"] = submitted

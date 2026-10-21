@@ -1,0 +1,2896 @@
+{
+  "backend_id": "qualification-llama-fef7a5149e66",
+  "backend_start_response": {
+    "backend_id": "qualification-llama-fef7a5149e66",
+    "execution_handle": null,
+    "id": "qualification-llama-fef7a5149e66",
+    "lease_id": "ebfa5d6b-b44a-4a83-92dc-08fce668f156",
+    "observation": {
+      "admission_preparation": {
+        "active_generations": 0,
+        "active_generations_source": "frameshift-provider-leases-upper-bound",
+        "admission_closed": true,
+        "admission_epoch": 1,
+        "admission_supported": true,
+        "backend_id": "qualification-llama-fef7a5149e66",
+        "close_receipt": {
+          "active_generations": 0,
+          "active_generations_source": "frameshift-provider-leases-upper-bound",
+          "active_generations_state": "observed",
+          "backend_id": "qualification-llama-fef7a5149e66",
+          "closed": true,
+          "configured": true,
+          "epoch": 1,
+          "invalidated_offers": 0,
+          "open": false,
+          "operation_id": "backend-start:qualification-llama-fef7a5149e66",
+          "state": "closed"
+        },
+        "eviction_supported": true,
+        "evidence": {
+          "rechecked": true,
+          "source": "authenticated-frameshift-admission-api"
+        },
+        "operation_id": "backend-start:qualification-llama-fef7a5149e66",
+        "state": "admission_closed"
+      },
+      "attempt_id": "backend-restore-2378895ce5b0545f7005fd4487c488de",
+      "backend_id": "qualification-llama-fef7a5149e66",
+      "evidence": {
+        "adapter": "managed-llama.cpp",
+        "observed_at": "2026-10-21T18:46:17.604789+00:00"
+      },
+      "execution_handle": {
+        "adapter_id": "systemd-user-unit",
+        "external_id": "device-scheduler-attempt-1430891b6b7320e2bcb1d8fba9dc1506.service",
+        "identity": "backend-restore-2378895ce5b0545f7005fd4487c488de",
+        "metadata": {
+          "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-1430891b6b7320e2bcb1d8fba9dc1506.service",
+          "description": "Device Scheduler attempt backend-restore-2378895ce5b0545f7005fd4487c488de",
+          "execution_root": "/tmp/device-scheduler-gpu-handoff-y6slrrt5/state/backends/backend-76b7d6522ad398fb1e58746c",
+          "handle_version": 1,
+          "invocation_id": "623aea6ba1964f6d97e524be3ba9fcde",
+          "profile_id": "qualification-llama-exec",
+          "profile_version": "1"
+        },
+        "started_at": "2026-10-21T18:45:58.130716Z"
+      },
+      "operation_id": "backend-start:qualification-llama-fef7a5149e66",
+      "profile_id": "qualification-llama-backend",
+      "profile_version": "1",
+      "readiness": {
+        "identity_verified": false,
+        "operation_id": "backend-start:qualification-llama-fef7a5149e66",
+        "ready": false,
+        "reason": "backend execution handle is unavailable",
+        "state": "unknown"
+      },
+      "state": "unknown"
+    },
+    "owner": "qualification",
+    "registered_at": "2026-10-21T18:45:57.794471Z",
+    "spec": {
+      "adapter_id": "managed-llama.cpp",
+      "attached_consumers": [],
+      "backend_id": "qualification-llama-fef7a5149e66",
+      "configuration_ref": "qualification-llama-backend",
+      "eviction_contract": {
+        "consumer_ack_required": true,
+        "drain_timeout_seconds": 90.0,
+        "model_eviction_requires_explicit_grant": true
+      },
+      "host_id": "testlsserver",
+      "pinned_configuration": {
+        "profile_version": "1"
+      },
+      "profile_id": "qualification-llama-backend",
+      "residency_requirements": [
+        {
+          "kind": "gpu",
+          "mode": "shared",
+          "quantities": {
+            "memory_bytes": 2147483648.0
+          },
+          "same_host": true,
+          "schema_version": 1,
+          "selectors": {
+            "uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8"
+          },
+          "topology_constraints": {}
+        }
+      ],
+      "schema_version": 1
+    },
+    "start_admission_receipt": {
+      "active_generations": 0,
+      "active_generations_source": "frameshift-provider-leases-upper-bound",
+      "admission_closed": true,
+      "admission_epoch": 1,
+      "admission_supported": true,
+      "backend_id": "qualification-llama-fef7a5149e66",
+      "close_receipt": {
+        "active_generations": 0,
+        "active_generations_source": "frameshift-provider-leases-upper-bound",
+        "active_generations_state": "observed",
+        "backend_id": "qualification-llama-fef7a5149e66",
+        "closed": true,
+        "configured": true,
+        "epoch": 1,
+        "invalidated_offers": 0,
+        "open": false,
+        "operation_id": "backend-start:qualification-llama-fef7a5149e66",
+        "state": "closed"
+      },
+      "eviction_supported": true,
+      "evidence": {
+        "rechecked": true,
+        "source": "authenticated-frameshift-admission-api"
+      },
+      "operation_id": "backend-start:qualification-llama-fef7a5149e66",
+      "state": "admission_closed"
+    },
+    "start_operation_id": "backend-start:qualification-llama-fef7a5149e66",
+    "start_phase": "launch_intent",
+    "state": "unknown",
+    "updated_at": "2026-10-21T18:46:17.626012Z"
+  },
+  "checks": {
+    "backend_started_and_ready": true,
+    "backend_weights_resident": true,
+    "durable_result_delivered_once": true,
+    "finite_cuda_allocation_copy_free": true,
+    "handoff_complete": true,
+    "manual_fixture_unit_and_gpu_cleanup": true,
+    "ordinary_pause_kept_weights_resident": true,
+    "parent_grant_active": true,
+    "parent_pool_still_active_after_cleanup": true,
+    "pinned_backend_restored_ready": true,
+    "pre_backend_quiescent": true,
+    "private_daemon_healthy": true,
+    "resumed_model_completed": true,
+    "scheduler_discovered_exact_uuid": true,
+    "single_v100_uuid": true,
+    "source_identity_unchanged_during_run": true,
+    "verified_backend_eviction_and_gpu_reclamation": true
+  },
+  "completed_at": "2026-10-21T18:51:32.858079+00:00",
+  "diagnostic_directory": "/tmp/device-scheduler-gpu-handoff-y6slrrt5",
+  "eviction_receipt": {
+    "active_generation_observation": {
+      "active_generations": 0,
+      "admission_observation": {
+        "active_generations": 0,
+        "active_generations_source": "frameshift-provider-leases-upper-bound",
+        "admission_closed": true,
+        "admission_epoch": 2,
+        "admission_operation_id": "qualification-handoff-cbd0e2520f41",
+        "admission_state": "closed",
+        "document": {
+          "active_generations": 0,
+          "active_generations_source": "frameshift-provider-leases-upper-bound",
+          "active_generations_state": "observed",
+          "backend_id": "qualification-llama-fef7a5149e66",
+          "closed": true,
+          "configured": true,
+          "epoch": 2,
+          "open": false,
+          "operation_id": "qualification-handoff-cbd0e2520f41",
+          "state": "closed",
+          "updated_at": "2026-10-21T18:47:53.446341+00:00"
+        },
+        "state": "observed"
+      },
+      "combination": "max(provider-lease-upper-bound, physical-non-idle-slot-count)",
+      "frameshift_provider_lease_upper_bound": 0,
+      "frameshift_state": {
+        "active_generations": 0,
+        "active_generations_source": "frameshift-provider-leases-upper-bound",
+        "admission_closed": true,
+        "admission_epoch": 2,
+        "admission_operation_id": "qualification-handoff-cbd0e2520f41",
+        "admission_state": "closed",
+        "document": {
+          "active_generations": 0,
+          "active_generations_source": "frameshift-provider-leases-upper-bound",
+          "active_generations_state": "observed",
+          "backend_id": "qualification-llama-fef7a5149e66",
+          "closed": true,
+          "configured": true,
+          "epoch": 2,
+          "open": false,
+          "operation_id": "qualification-handoff-cbd0e2520f41",
+          "state": "closed",
+          "updated_at": "2026-10-21T18:47:53.446341+00:00"
+        },
+        "state": "observed"
+      },
+      "limitations": [
+        "FrameShift count covers only registered provider users under the frameshift-only standing contract",
+        "llama /slots is observational and requires the server to start with --slots",
+        "same-administrative-domain access is not hostile-client isolation"
+      ],
+      "llama_slots": {
+        "processing": 0,
+        "total": 1,
+        "url": "http://127.0.0.1:50075/slots"
+      },
+      "state": "observed"
+    },
+    "authorization": {
+      "authorized": true,
+      "expires_at": "2026-10-21T19:19:44.500765+00:00",
+      "grant_id": "grant-9cf8a7acb6414c45ab2c3e048aef8711",
+      "granted_by": "qualification",
+      "handoff_id": "qualification-handoff-cbd0e2520f41",
+      "scope": "backend:qualification-llama-fef7a5149e66"
+    },
+    "backend_id": "qualification-llama-fef7a5149e66",
+    "cleanup_verified": true,
+    "close_receipt": {
+      "active_generations": 0,
+      "active_generations_source": "frameshift-provider-leases-upper-bound",
+      "active_generations_state": "observed",
+      "backend_id": "qualification-llama-fef7a5149e66",
+      "closed": true,
+      "configured": true,
+      "epoch": 2,
+      "invalidated_offers": 0,
+      "open": false,
+      "operation_id": "qualification-handoff-cbd0e2520f41",
+      "state": "closed"
+    },
+    "evidence": {
+      "adapter": "managed-llama.cpp",
+      "profile_id": "qualification-llama-backend",
+      "profile_version": "1"
+    },
+    "execution_receipt": {
+      "cleanup_verified": true,
+      "evidence": {
+        "adapter": "systemd-user-unit/v1",
+        "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-1430891b6b7320e2bcb1d8fba9dc1506.service",
+        "invocation_id": "623aea6ba1964f6d97e524be3ba9fcde",
+        "post_stop_unit_state": "not-found",
+        "unit_description": "Device Scheduler attempt backend-restore-2378895ce5b0545f7005fd4487c488de"
+      },
+      "invocation_id": "623aea6ba1964f6d97e524be3ba9fcde",
+      "operation_id": "qualification-handoff-cbd0e2520f41",
+      "reason": "unit was unloaded after systemd acknowledged stop",
+      "state": "unknown",
+      "stop_requested": true,
+      "unit_name": "device-scheduler-attempt-1430891b6b7320e2bcb1d8fba9dc1506.service"
+    },
+    "operation_id": "qualification-handoff-cbd0e2520f41",
+    "reclamation_baseline": {
+      "backend_id": "qualification-llama-fef7a5149e66",
+      "evidence": {
+        "nvidia_inventory_observed_at": "2026-10-21T18:48:13.289106+00:00",
+        "nvidia_processes_observed_at": "2026-10-21T18:48:15.147727+00:00",
+        "systemd_process_observed_at": "2026-10-21T18:48:11.373124+00:00",
+        "systemd_scope": "invocation-verified-systemd-unit-cgroups"
+      },
+      "execution_identity": {
+        "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-1430891b6b7320e2bcb1d8fba9dc1506.service",
+        "invocation_id": "623aea6ba1964f6d97e524be3ba9fcde",
+        "unit_name": "device-scheduler-attempt-1430891b6b7320e2bcb1d8fba9dc1506.service"
+      },
+      "gpus": [
+        {
+          "backend_process_ids": [
+            279514
+          ],
+          "gpu_uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+          "inventory_observed_at": "2026-10-21T18:48:13.289106+00:00",
+          "memory_free_bytes": 15870197760,
+          "process_ids": [
+            279514
+          ],
+          "process_observed_at": "2026-10-21T18:48:15.147727+00:00",
+          "resource_id": "gpu:testlsserver:GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+          "used_gpu_memory_bytes": 1054867456
+        }
+      ],
+      "limitations": [
+        "NVIDIA process visibility and memory values are observational and are not enforcement guarantees",
+        "same-user processes outside registered systemd units are outside the isolation boundary"
+      ],
+      "observed_at": "2026-10-21T18:48:15.147727+00:00",
+      "operation_id": "qualification-handoff-cbd0e2520f41:baseline:0",
+      "process_mapping_state": "observed",
+      "profile_id": "qualification-llama-backend",
+      "profile_version": "1",
+      "source": "nvidia-smi+invocation-verified-systemd-unit-cgroups",
+      "state": "observed"
+    },
+    "resource_reclamation": {
+      "evidence": [
+        {
+          "baseline_backend_memory_bytes": 1054867456,
+          "baseline_backend_process_ids": [
+            279514
+          ],
+          "baseline_memory_free_bytes": 15870197760,
+          "baseline_operation_id": "qualification-handoff-cbd0e2520f41:baseline:0",
+          "consecutive_qualifying_samples": 3,
+          "evidence": {
+            "observed_at": "2026-10-21T18:48:38.852023+00:00",
+            "sample_count": 3,
+            "scope": "nvidia-smi-visible-compute-applications",
+            "source": "nvidia-smi-observations"
+          },
+          "gpu_uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+          "memory_enforcement": "accounting-only-observation",
+          "minimum_free_bytes": 16925065216,
+          "process_scope": "nvidia-smi-visible-compute-applications",
+          "resource_id": "gpu:testlsserver:GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+          "samples": [
+            {
+              "memory_free_bytes": 16929259520,
+              "observed_at": "2026-10-21T18:48:28.868795+00:00",
+              "processes": {
+                "gpu_uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+                "observed_at": "2026-10-21T18:48:26.347966+00:00",
+                "processes": [],
+                "scope": "nvidia-smi-visible-compute-applications",
+                "state": "empty"
+              }
+            },
+            {
+              "memory_free_bytes": 16929259520,
+              "observed_at": "2026-10-21T18:48:33.966056+00:00",
+              "processes": {
+                "gpu_uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+                "observed_at": "2026-10-21T18:48:31.521094+00:00",
+                "processes": [],
+                "scope": "nvidia-smi-visible-compute-applications",
+                "state": "empty"
+              }
+            },
+            {
+              "memory_free_bytes": 16929259520,
+              "observed_at": "2026-10-21T18:48:38.852023+00:00",
+              "processes": {
+                "gpu_uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+                "observed_at": "2026-10-21T18:48:36.358367+00:00",
+                "processes": [],
+                "scope": "nvidia-smi-visible-compute-applications",
+                "state": "empty"
+              }
+            }
+          ],
+          "state": "reclaimed"
+        }
+      ],
+      "memory_enforcement": "accounting-only-observation",
+      "minimum_free_bytes": 2147483648,
+      "operation_id": "qualification-handoff-cbd0e2520f41",
+      "reclamation_semantics": "post-stop free-memory floor compared with durable pre-stop telemetry; observational, not enforced",
+      "scope": "NVIDIA post-stop telemetry for GPUs in the transferred backend residency lease",
+      "state": "reclaimed"
+    },
+    "state": "evicted"
+  },
+  "frame_id": "9b96f274-d09f-464b-9dd3-e1924d597b40",
+  "frame_shift_completion": {
+    "barrier": {
+      "ack": {
+        "durable": true,
+        "generation": 1,
+        "provider_release_verified": true,
+        "safe_boundary": true
+      },
+      "app_id": "device-scheduler-gpu-qualification",
+      "deadline": "2026-10-21T18:49:23.427793+00:00",
+      "delivery_id": "ds.cXVhbGlmaWNhdGlvbi1oYW5kb2ZmLWNiZDBlMjUyMGY0MQ.f4eec5939a6e3450",
+      "durable": true,
+      "frame_id": "9b96f274-d09f-464b-9dd3-e1924d597b40",
+      "generation": 1,
+      "handoff_id": "qualification-handoff-cbd0e2520f41",
+      "resume_state": "runnable",
+      "safe_boundary": true,
+      "state": "resumed",
+      "updated_at": "2026-10-21T18:49:37.131297+00:00"
+    },
+    "event_counts": {
+      "handoff_barrier_requested": 1,
+      "handoff_continuation_resumed": 1,
+      "handoff_result_delivered": 1
+    },
+    "events": [
+      {
+        "app_id": "device-scheduler-gpu-qualification",
+        "created_at": "2026-10-21T18:47:59.427395+00:00",
+        "frame_id": "9b96f274-d09f-464b-9dd3-e1924d597b40",
+        "generation": 1,
+        "id": 6,
+        "kind": "handoff_barrier_requested",
+        "payload": {
+          "handoff_id": "qualification-handoff-cbd0e2520f41",
+          "state": "acknowledged"
+        }
+      },
+      {
+        "app_id": "device-scheduler-gpu-qualification",
+        "created_at": "2026-10-21T18:49:31.224855+00:00",
+        "frame_id": "9b96f274-d09f-464b-9dd3-e1924d597b40",
+        "generation": 1,
+        "id": 8,
+        "kind": "handoff_result_delivered",
+        "payload": {
+          "delivery_id": "ds.cXVhbGlmaWNhdGlvbi1oYW5kb2ZmLWNiZDBlMjUyMGY0MQ.f4eec5939a6e3450",
+          "handoff_id": "qualification-handoff-cbd0e2520f41",
+          "message_id": "handoff:qualification-handoff-cbd0e2520f41:9b96f274-d09f-464b-9dd3-e1924d597b40:1"
+        }
+      },
+      {
+        "app_id": "device-scheduler-gpu-qualification",
+        "created_at": "2026-10-21T18:49:37.131297+00:00",
+        "frame_id": "9b96f274-d09f-464b-9dd3-e1924d597b40",
+        "generation": 1,
+        "id": 9,
+        "kind": "handoff_continuation_resumed",
+        "payload": {
+          "delivery_id": "ds.cXVhbGlmaWNhdGlvbi1oYW5kb2ZmLWNiZDBlMjUyMGY0MQ.f4eec5939a6e3450",
+          "handoff_id": "qualification-handoff-cbd0e2520f41"
+        }
+      }
+    ],
+    "final_frame": {
+      "app_id": "device-scheduler-gpu-qualification",
+      "budget": {
+        "deadline": null,
+        "max_context_tokens": 4096,
+        "max_output_tokens_per_turn": 128,
+        "turns_remaining": 1
+      },
+      "checkpoint": {
+        "codec_id": "json",
+        "data": "{\"action\":\"complete\",\"payload\":{\"report\":\"The CUDA probe test 'finite-cuda-allocation-copy-free' passed: 128 MiB was allocated, copied, and freed on GPU-21131915-\"\n\n}\n\n}",
+        "schema_version": "1"
+      },
+      "created_at": "2026-10-21T18:46:27.137342+00:00",
+      "deadline": null,
+      "error": null,
+      "generation": 2,
+      "grant_id": "qualification-grant",
+      "id": "9b96f274-d09f-464b-9dd3-e1924d597b40",
+      "last_result_id": "cf6446f1-1012-4069-aa0d-9f877012c4ec",
+      "mailbox_cursor": 1,
+      "objective": {
+        "codec_id": "qualification.prompt",
+        "data": "Request the one registered CUDA probe, then use its durable result to finish this qualification turn.",
+        "schema_version": "1"
+      },
+      "parent_id": null,
+      "priority_class": "interactive",
+      "profile_id": null,
+      "root_id": "9b96f274-d09f-464b-9dd3-e1924d597b40",
+      "state": "completed",
+      "type_id": "device-scheduler-gpu-handoff-agent",
+      "type_version": "1",
+      "updated_at": "2026-10-21T18:51:19.386336+00:00"
+    },
+    "final_result": {
+      "action": {
+        "arguments": null,
+        "kind": "complete",
+        "message_id": null,
+        "payload": {
+          "codec_id": "json",
+          "data": {
+            "report": "The CUDA probe test 'finite-cuda-allocation-copy-free' passed: 128 MiB was allocated, copied, and freed on GPU-21131915-"
+          },
+          "schema_version": "1"
+        },
+        "reason": null,
+        "recipient_frame_id": null,
+        "spawn": null,
+        "toolkit_id": null,
+        "wait": null
+      },
+      "app_id": "device-scheduler-gpu-qualification",
+      "created_at": "2026-10-21T18:51:19.384927+00:00",
+      "error": null,
+      "frame_id": "9b96f274-d09f-464b-9dd3-e1924d597b40",
+      "generation": 2,
+      "id": "cf6446f1-1012-4069-aa0d-9f877012c4ec",
+      "model_id": "qwen3.6-35b-a3b-q4-k-m",
+      "model_version": "local-gguf-pinned",
+      "output": {
+        "codec_id": "json",
+        "data": "{\"action\":\"complete\",\"payload\":{\"report\":\"The CUDA probe test 'finite-cuda-allocation-copy-free' passed: 128 MiB was allocated, copied, and freed on GPU-21131915-\"\n\n}\n\n}",
+        "schema_version": "1"
+      },
+      "partial": false,
+      "provider_id": "qualification-llama-provider",
+      "usage": {
+        "elapsed_ms": 102204,
+        "input_tokens": 1069,
+        "output_tokens": 55,
+        "provider_metadata": {
+          "timings": {
+            "cache_n": 0,
+            "predicted_ms": 33246.907,
+            "predicted_n": 55,
+            "predicted_per_second": 1.6242112386574787,
+            "predicted_per_token_ms": 615.683462962963,
+            "prompt_ms": 68951.677,
+            "prompt_n": 1069,
+            "prompt_per_second": 15.503611318982133,
+            "prompt_per_token_ms": 64.50110102899906
+          },
+          "tokens_cached": 1123
+        }
+      }
+    }
+  },
+  "frame_spawn": {
+    "app_id": "device-scheduler-gpu-qualification",
+    "budget": {
+      "deadline": null,
+      "max_context_tokens": 4096,
+      "max_output_tokens_per_turn": 128,
+      "turns_remaining": 3
+    },
+    "checkpoint": null,
+    "created_at": "2026-10-21T18:46:27.137342+00:00",
+    "deadline": null,
+    "error": null,
+    "generation": 0,
+    "grant_id": "qualification-grant",
+    "id": "9b96f274-d09f-464b-9dd3-e1924d597b40",
+    "last_result_id": null,
+    "mailbox_cursor": 0,
+    "objective": {
+      "codec_id": "qualification.prompt",
+      "data": "Request the one registered CUDA probe, then use its durable result to finish this qualification turn.",
+      "schema_version": "1"
+    },
+    "parent_id": null,
+    "priority_class": "interactive",
+    "profile_id": null,
+    "root_id": "9b96f274-d09f-464b-9dd3-e1924d597b40",
+    "state": "runnable",
+    "type_id": "device-scheduler-gpu-handoff-agent",
+    "type_version": "1",
+    "updated_at": "2026-10-21T18:46:27.137342+00:00"
+  },
+  "gpu_before_backend": {
+    "gpu_uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+    "inventory_observed_at": "2026-10-21T18:45:29.908119+00:00",
+    "memory_free_bytes": 16929259520,
+    "memory_total_bytes": 17179869184,
+    "name": "Tesla V100-SXM2-16GB",
+    "pci_bus_id": "00000000:02:00.0",
+    "process_count": 0,
+    "process_observed_at": "2026-10-21T18:45:32.311493+00:00",
+    "resource_id": "gpu:testlsserver:GPU-21131915-1488-23af-38dd-1743ae1f5cc8"
+  },
+  "handoff": {
+    "backend_snapshots": {
+      "qualification-llama-fef7a5149e66": {
+        "allocations": [
+          {
+            "mode": "shared",
+            "quantities": {
+              "memory_bytes": 2147483648.0
+            },
+            "resource_id": "gpu:testlsserver:GPU-21131915-1488-23af-38dd-1743ae1f5cc8"
+          }
+        ],
+        "execution_handle": {
+          "adapter_id": "systemd-user-unit",
+          "external_id": "device-scheduler-attempt-1430891b6b7320e2bcb1d8fba9dc1506.service",
+          "identity": "backend-restore-2378895ce5b0545f7005fd4487c488de",
+          "metadata": {
+            "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-1430891b6b7320e2bcb1d8fba9dc1506.service",
+            "description": "Device Scheduler attempt backend-restore-2378895ce5b0545f7005fd4487c488de",
+            "execution_root": "/tmp/device-scheduler-gpu-handoff-y6slrrt5/state/backends/backend-76b7d6522ad398fb1e58746c",
+            "handle_version": 1,
+            "invocation_id": "623aea6ba1964f6d97e524be3ba9fcde",
+            "profile_id": "qualification-llama-exec",
+            "profile_version": "1"
+          },
+          "started_at": "2026-10-21T18:45:58.130716Z"
+        },
+        "lease_id": "ebfa5d6b-b44a-4a83-92dc-08fce668f156",
+        "resources": [
+          {
+            "attributes": {
+              "index_observation": 0,
+              "inventory_observed_at": "2026-10-21T18:47:42.591152+00:00",
+              "managed_process_ids": [
+                279514
+              ],
+              "memory_enforcement": "accounting_only",
+              "memory_free_bytes_observation": 15870197760,
+              "name": "Tesla V100-SXM2-16GB",
+              "pci_bus_id": "00000000:02:00.0",
+              "process_count_observation": 1,
+              "process_identity_unknown_count": 0,
+              "process_mapping_state": "observed",
+              "process_observed_at": "2026-10-21T18:47:42.591152+00:00",
+              "process_telemetry": "compute-apps-visible",
+              "process_telemetry_state": "observed",
+              "processes_observation": [
+                {
+                  "gpu_uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+                  "identity_unknown": false,
+                  "pid": 279514,
+                  "process_name": "/home/tumlinson/Software/llama.cpp/build/bin/llama-server",
+                  "used_memory_bytes": 1054867456
+                }
+              ],
+              "unmanaged_process_count": 0,
+              "utilization_percent_observation": 0,
+              "uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8"
+            },
+            "capabilities": [
+              "nvidia-smi-compute-process-telemetry",
+              "shared-admission",
+              "whole-device-exclusive-admission",
+              "memory-accounting-only"
+            ],
+            "capacities": {
+              "memory_bytes": 17179869184.0
+            },
+            "conflict_domains": [
+              "gpu-exclusive:testlsserver:GPU-21131915-1488-23af-38dd-1743ae1f5cc8"
+            ],
+            "host_id": "testlsserver",
+            "kind": "gpu",
+            "resource_id": "gpu:testlsserver:GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+            "schema_version": 1,
+            "topology": {
+              "links": [],
+              "pci_bus_id": "00000000:02:00.0",
+              "topology_state": "partial"
+            }
+          }
+        ],
+        "spec": {
+          "adapter_id": "managed-llama.cpp",
+          "attached_consumers": [
+            "device-scheduler-qualification-frame"
+          ],
+          "backend_id": "qualification-llama-fef7a5149e66",
+          "configuration_ref": "qualification-llama-backend",
+          "eviction_contract": {
+            "consumer_ack_required": true,
+            "drain_timeout_seconds": 90.0,
+            "model_eviction_requires_explicit_grant": true
+          },
+          "host_id": "testlsserver",
+          "pinned_configuration": {
+            "profile_version": "1"
+          },
+          "profile_id": "qualification-llama-backend",
+          "residency_requirements": [
+            {
+              "kind": "gpu",
+              "mode": "shared",
+              "quantities": {
+                "memory_bytes": 2147483648.0
+              },
+              "same_host": true,
+              "schema_version": 1,
+              "selectors": {
+                "uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8"
+              },
+              "topology_constraints": {}
+            }
+          ],
+          "schema_version": 1
+        }
+      }
+    },
+    "cancel_reason": null,
+    "cancel_requested": false,
+    "completed_at": "2026-10-21T18:49:37.143352+00:00",
+    "continuation_refs": [
+      "device-scheduler-qualification-frame"
+    ],
+    "created_at": "2026-10-21T18:47:44.674258+00:00",
+    "drain_deadline": "2026-10-21T18:49:23.427793+00:00",
+    "drain_started_at": "2026-10-21T18:47:53.427793+00:00",
+    "effects": {
+      "deliver:device-scheduler-qualification-frame": {
+        "operation_id": "handoff-ccded1ef2956bee9ddb3e5a3-deliver",
+        "receipt": {
+          "delivered": true,
+          "durable": true,
+          "message_id": "handoff:qualification-handoff-cbd0e2520f41:9b96f274-d09f-464b-9dd3-e1924d597b40:1",
+          "state": "delivered"
+        }
+      },
+      "drain:qualification-llama-fef7a5149e66": {
+        "operation_id": "handoff-db950f49e4fa304508457f88-drain",
+        "receipt": {
+          "admission_closed": true,
+          "close_receipt": {
+            "active_generations": 0,
+            "active_generations_source": "frameshift-provider-leases-upper-bound",
+            "active_generations_state": "observed",
+            "backend_id": "qualification-llama-fef7a5149e66",
+            "closed": true,
+            "configured": true,
+            "epoch": 2,
+            "invalidated_offers": 0,
+            "open": false,
+            "operation_id": "qualification-handoff-cbd0e2520f41",
+            "state": "closed"
+          },
+          "continuations_suspended": false,
+          "evidence": {
+            "adapter": "managed-llama.cpp",
+            "note": "coordinator must suspend registered consumers and inspect active generations before eviction"
+          },
+          "operation_id": "qualification-handoff-cbd0e2520f41",
+          "state": "admission_closed"
+        }
+      },
+      "evict:qualification-llama-fef7a5149e66": {
+        "operation_id": "handoff-e0ed6910d2d8324379e112de-evict",
+        "receipt": {
+          "active_generation_observation": {
+            "active_generations": 0,
+            "admission_observation": {
+              "active_generations": 0,
+              "active_generations_source": "frameshift-provider-leases-upper-bound",
+              "admission_closed": true,
+              "admission_epoch": 2,
+              "admission_operation_id": "qualification-handoff-cbd0e2520f41",
+              "admission_state": "closed",
+              "document": {
+                "active_generations": 0,
+                "active_generations_source": "frameshift-provider-leases-upper-bound",
+                "active_generations_state": "observed",
+                "backend_id": "qualification-llama-fef7a5149e66",
+                "closed": true,
+                "configured": true,
+                "epoch": 2,
+                "open": false,
+                "operation_id": "qualification-handoff-cbd0e2520f41",
+                "state": "closed",
+                "updated_at": "2026-10-21T18:47:53.446341+00:00"
+              },
+              "state": "observed"
+            },
+            "combination": "max(provider-lease-upper-bound, physical-non-idle-slot-count)",
+            "frameshift_provider_lease_upper_bound": 0,
+            "frameshift_state": {
+              "active_generations": 0,
+              "active_generations_source": "frameshift-provider-leases-upper-bound",
+              "admission_closed": true,
+              "admission_epoch": 2,
+              "admission_operation_id": "qualification-handoff-cbd0e2520f41",
+              "admission_state": "closed",
+              "document": {
+                "active_generations": 0,
+                "active_generations_source": "frameshift-provider-leases-upper-bound",
+                "active_generations_state": "observed",
+                "backend_id": "qualification-llama-fef7a5149e66",
+                "closed": true,
+                "configured": true,
+                "epoch": 2,
+                "open": false,
+                "operation_id": "qualification-handoff-cbd0e2520f41",
+                "state": "closed",
+                "updated_at": "2026-10-21T18:47:53.446341+00:00"
+              },
+              "state": "observed"
+            },
+            "limitations": [
+              "FrameShift count covers only registered provider users under the frameshift-only standing contract",
+              "llama /slots is observational and requires the server to start with --slots",
+              "same-administrative-domain access is not hostile-client isolation"
+            ],
+            "llama_slots": {
+              "processing": 0,
+              "total": 1,
+              "url": "http://127.0.0.1:50075/slots"
+            },
+            "state": "observed"
+          },
+          "authorization": {
+            "authorized": true,
+            "expires_at": "2026-10-21T19:19:44.500765+00:00",
+            "grant_id": "grant-9cf8a7acb6414c45ab2c3e048aef8711",
+            "granted_by": "qualification",
+            "handoff_id": "qualification-handoff-cbd0e2520f41",
+            "scope": "backend:qualification-llama-fef7a5149e66"
+          },
+          "backend_id": "qualification-llama-fef7a5149e66",
+          "cleanup_verified": true,
+          "close_receipt": {
+            "active_generations": 0,
+            "active_generations_source": "frameshift-provider-leases-upper-bound",
+            "active_generations_state": "observed",
+            "backend_id": "qualification-llama-fef7a5149e66",
+            "closed": true,
+            "configured": true,
+            "epoch": 2,
+            "invalidated_offers": 0,
+            "open": false,
+            "operation_id": "qualification-handoff-cbd0e2520f41",
+            "state": "closed"
+          },
+          "evidence": {
+            "adapter": "managed-llama.cpp",
+            "profile_id": "qualification-llama-backend",
+            "profile_version": "1"
+          },
+          "execution_receipt": {
+            "cleanup_verified": true,
+            "evidence": {
+              "adapter": "systemd-user-unit/v1",
+              "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-1430891b6b7320e2bcb1d8fba9dc1506.service",
+              "invocation_id": "623aea6ba1964f6d97e524be3ba9fcde",
+              "post_stop_unit_state": "not-found",
+              "unit_description": "Device Scheduler attempt backend-restore-2378895ce5b0545f7005fd4487c488de"
+            },
+            "invocation_id": "623aea6ba1964f6d97e524be3ba9fcde",
+            "operation_id": "qualification-handoff-cbd0e2520f41",
+            "reason": "unit was unloaded after systemd acknowledged stop",
+            "state": "unknown",
+            "stop_requested": true,
+            "unit_name": "device-scheduler-attempt-1430891b6b7320e2bcb1d8fba9dc1506.service"
+          },
+          "operation_id": "qualification-handoff-cbd0e2520f41",
+          "reclamation_baseline": {
+            "backend_id": "qualification-llama-fef7a5149e66",
+            "evidence": {
+              "nvidia_inventory_observed_at": "2026-10-21T18:48:13.289106+00:00",
+              "nvidia_processes_observed_at": "2026-10-21T18:48:15.147727+00:00",
+              "systemd_process_observed_at": "2026-10-21T18:48:11.373124+00:00",
+              "systemd_scope": "invocation-verified-systemd-unit-cgroups"
+            },
+            "execution_identity": {
+              "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-1430891b6b7320e2bcb1d8fba9dc1506.service",
+              "invocation_id": "623aea6ba1964f6d97e524be3ba9fcde",
+              "unit_name": "device-scheduler-attempt-1430891b6b7320e2bcb1d8fba9dc1506.service"
+            },
+            "gpus": [
+              {
+                "backend_process_ids": [
+                  279514
+                ],
+                "gpu_uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+                "inventory_observed_at": "2026-10-21T18:48:13.289106+00:00",
+                "memory_free_bytes": 15870197760,
+                "process_ids": [
+                  279514
+                ],
+                "process_observed_at": "2026-10-21T18:48:15.147727+00:00",
+                "resource_id": "gpu:testlsserver:GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+                "used_gpu_memory_bytes": 1054867456
+              }
+            ],
+            "limitations": [
+              "NVIDIA process visibility and memory values are observational and are not enforcement guarantees",
+              "same-user processes outside registered systemd units are outside the isolation boundary"
+            ],
+            "observed_at": "2026-10-21T18:48:15.147727+00:00",
+            "operation_id": "qualification-handoff-cbd0e2520f41:baseline:0",
+            "process_mapping_state": "observed",
+            "profile_id": "qualification-llama-backend",
+            "profile_version": "1",
+            "source": "nvidia-smi+invocation-verified-systemd-unit-cgroups",
+            "state": "observed"
+          },
+          "resource_reclamation": {
+            "evidence": [
+              {
+                "baseline_backend_memory_bytes": 1054867456,
+                "baseline_backend_process_ids": [
+                  279514
+                ],
+                "baseline_memory_free_bytes": 15870197760,
+                "baseline_operation_id": "qualification-handoff-cbd0e2520f41:baseline:0",
+                "consecutive_qualifying_samples": 3,
+                "evidence": {
+                  "observed_at": "2026-10-21T18:48:38.852023+00:00",
+                  "sample_count": 3,
+                  "scope": "nvidia-smi-visible-compute-applications",
+                  "source": "nvidia-smi-observations"
+                },
+                "gpu_uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+                "memory_enforcement": "accounting-only-observation",
+                "minimum_free_bytes": 16925065216,
+                "process_scope": "nvidia-smi-visible-compute-applications",
+                "resource_id": "gpu:testlsserver:GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+                "samples": [
+                  {
+                    "memory_free_bytes": 16929259520,
+                    "observed_at": "2026-10-21T18:48:28.868795+00:00",
+                    "processes": {
+                      "gpu_uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+                      "observed_at": "2026-10-21T18:48:26.347966+00:00",
+                      "processes": [],
+                      "scope": "nvidia-smi-visible-compute-applications",
+                      "state": "empty"
+                    }
+                  },
+                  {
+                    "memory_free_bytes": 16929259520,
+                    "observed_at": "2026-10-21T18:48:33.966056+00:00",
+                    "processes": {
+                      "gpu_uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+                      "observed_at": "2026-10-21T18:48:31.521094+00:00",
+                      "processes": [],
+                      "scope": "nvidia-smi-visible-compute-applications",
+                      "state": "empty"
+                    }
+                  },
+                  {
+                    "memory_free_bytes": 16929259520,
+                    "observed_at": "2026-10-21T18:48:38.852023+00:00",
+                    "processes": {
+                      "gpu_uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+                      "observed_at": "2026-10-21T18:48:36.358367+00:00",
+                      "processes": [],
+                      "scope": "nvidia-smi-visible-compute-applications",
+                      "state": "empty"
+                    }
+                  }
+                ],
+                "state": "reclaimed"
+              }
+            ],
+            "memory_enforcement": "accounting-only-observation",
+            "minimum_free_bytes": 2147483648,
+            "operation_id": "qualification-handoff-cbd0e2520f41",
+            "reclamation_semantics": "post-stop free-memory floor compared with durable pre-stop telemetry; observational, not enforced",
+            "scope": "NVIDIA post-stop telemetry for GPUs in the transferred backend residency lease",
+            "state": "reclaimed"
+          },
+          "state": "evicted"
+        }
+      },
+      "reopen:qualification-llama-fef7a5149e66": {
+        "operation_id": "handoff-09058c5b2103f06be748f993-reopen",
+        "receipt": {
+          "admission_epoch": 2,
+          "admission_open": true,
+          "backend_id": "qualification-llama-fef7a5149e66",
+          "open_receipt": {
+            "backend_id": "qualification-llama-fef7a5149e66",
+            "closed": false,
+            "configured": true,
+            "epoch": 2,
+            "open": true,
+            "opened": true,
+            "operation_id": "qualification-handoff-cbd0e2520f41",
+            "state": "open"
+          },
+          "operation_id": "qualification-handoff-cbd0e2520f41",
+          "state": "ready"
+        }
+      },
+      "restore:qualification-llama-fef7a5149e66": {
+        "operation_id": "handoff-ba09f9b4f46f8a570f7c2989-restore",
+        "receipt": {
+          "attempt_id": "backend-restore-79f10cca85fc27b145d5d00dab172412",
+          "backend_id": "qualification-llama-fef7a5149e66",
+          "evidence": {
+            "adapter": "managed-llama.cpp",
+            "observed_at": "2026-10-21T18:49:07.341663+00:00"
+          },
+          "execution_handle": {
+            "adapter_id": "systemd-user-unit",
+            "external_id": "device-scheduler-attempt-0dc53a484c1246a9659db30ed9b8ddd7.service",
+            "identity": "backend-restore-79f10cca85fc27b145d5d00dab172412",
+            "metadata": {
+              "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-0dc53a484c1246a9659db30ed9b8ddd7.service",
+              "description": "Device Scheduler attempt backend-restore-79f10cca85fc27b145d5d00dab172412",
+              "execution_root": "/tmp/device-scheduler-gpu-handoff-y6slrrt5/state/backends/backend-76b7d6522ad398fb1e58746c",
+              "handle_version": 1,
+              "invocation_id": "3c894eb6372a41d58936fea5e68cfaff",
+              "profile_id": "qualification-llama-exec",
+              "profile_version": "1"
+            },
+            "started_at": "2026-10-21T18:49:01.171228Z"
+          },
+          "operation_id": "qualification-handoff-cbd0e2520f41",
+          "profile_id": "qualification-llama-backend",
+          "profile_version": "1",
+          "readiness": {
+            "execution_state": "running",
+            "health": {
+              "status": "ok"
+            },
+            "http_status": 200,
+            "identity_verified": true,
+            "model_identity": "device-scheduler-qualification",
+            "ready": true,
+            "state": "ready"
+          },
+          "state": "ready"
+        }
+      },
+      "resume:device-scheduler-qualification-frame": {
+        "operation_id": "handoff-2051fee068053b4e78ce6967-resume",
+        "receipt": {
+          "frame_state": "runnable",
+          "resumed": true,
+          "state": "resumed"
+        }
+      },
+      "suspend:device-scheduler-qualification-frame": {
+        "operation_id": "handoff-25b983823e5e8a039e3b9086-suspend",
+        "receipt": {
+          "ack": {
+            "durable": true,
+            "generation": 1,
+            "provider_release_verified": true,
+            "safe_boundary": true
+          },
+          "app_id": "device-scheduler-gpu-qualification",
+          "deadline": "2026-10-21T18:49:23.427793+00:00",
+          "delivery_id": null,
+          "durable": true,
+          "frame_id": "9b96f274-d09f-464b-9dd3-e1924d597b40",
+          "generation": 1,
+          "handoff_id": "qualification-handoff-cbd0e2520f41",
+          "resume_state": "suspended",
+          "safe_boundary": true,
+          "state": "acknowledged",
+          "updated_at": "2026-10-21T18:47:59.427395+00:00"
+        }
+      }
+    },
+    "error": null,
+    "handoff_id": "qualification-handoff-cbd0e2520f41",
+    "idempotency_key": "qualify-qualification-handoff-cbd0e2520f41",
+    "job_ids": [
+      "7c0c4d5f-5283-46f5-bbea-f932c53786bc"
+    ],
+    "job_results": {
+      "7c0c4d5f-5283-46f5-bbea-f932c53786bc": {
+        "cleanup_verified": true,
+        "result": {
+          "active_state": "active",
+          "adapter": "systemd-user-unit/v1",
+          "cleanup_verified": true,
+          "evidence": {
+            "adapter": "systemd-user-unit/v1",
+            "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-4dadd6d50814c76d6986321f200f94bd.service",
+            "invocation_id": "ef90be6715934efb8867b4b0b36e84d0",
+            "main_code": "1",
+            "unit_description": "Device Scheduler attempt 976e0e5c-0a0f-4b32-aba9-2cc1d2cb71da"
+          },
+          "exit_code": 0,
+          "invocation_id": "ef90be6715934efb8867b4b0b36e84d0",
+          "logs": "{\"gpu_uuid\": \"GPU-21131915-1488-23af-38dd-1743ae1f5cc8\", \"memory_bytes\": 134217728, \"performance_claim\": false, \"pid\": 289194, \"schema_version\": 1, \"status\": \"passed\", \"test\": \"finite-cuda-allocation-copy-free\", \"verified_bytes\": 134217728}\n",
+          "logs_error": null,
+          "logs_truncated": false,
+          "result": "success",
+          "state": "succeeded",
+          "stdout": "{\"gpu_uuid\": \"GPU-21131915-1488-23af-38dd-1743ae1f5cc8\", \"memory_bytes\": 134217728, \"performance_claim\": false, \"pid\": 289194, \"schema_version\": 1, \"status\": \"passed\", \"test\": \"finite-cuda-allocation-copy-free\", \"verified_bytes\": 134217728}\n",
+          "substate": "exited",
+          "unit_name": "device-scheduler-attempt-4dadd6d50814c76d6986321f200f94bd.service"
+        },
+        "state": "succeeded"
+      }
+    },
+    "owner_id": "qualification",
+    "phase": "complete",
+    "readiness_observations": {
+      "qualification-llama-fef7a5149e66": {
+        "backend_id": "qualification-llama-fef7a5149e66",
+        "execution_state": "running",
+        "health": {
+          "status": "ok"
+        },
+        "http_status": 200,
+        "identity_verified": true,
+        "model_identity": "device-scheduler-qualification",
+        "operation_id": "qualification-handoff-cbd0e2520f41",
+        "ready": true,
+        "state": "ready"
+      }
+    },
+    "reclamation_baseline_attempts": {
+      "qualification-llama-fef7a5149e66": 1
+    },
+    "reclamation_baselines": {
+      "qualification-llama-fef7a5149e66": {
+        "backend_id": "qualification-llama-fef7a5149e66",
+        "evidence": {
+          "nvidia_inventory_observed_at": "2026-10-21T18:48:13.289106+00:00",
+          "nvidia_processes_observed_at": "2026-10-21T18:48:15.147727+00:00",
+          "systemd_process_observed_at": "2026-10-21T18:48:11.373124+00:00",
+          "systemd_scope": "invocation-verified-systemd-unit-cgroups"
+        },
+        "execution_identity": {
+          "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-1430891b6b7320e2bcb1d8fba9dc1506.service",
+          "invocation_id": "623aea6ba1964f6d97e524be3ba9fcde",
+          "unit_name": "device-scheduler-attempt-1430891b6b7320e2bcb1d8fba9dc1506.service"
+        },
+        "gpus": [
+          {
+            "backend_process_ids": [
+              279514
+            ],
+            "gpu_uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+            "inventory_observed_at": "2026-10-21T18:48:13.289106+00:00",
+            "memory_free_bytes": 15870197760,
+            "process_ids": [
+              279514
+            ],
+            "process_observed_at": "2026-10-21T18:48:15.147727+00:00",
+            "resource_id": "gpu:testlsserver:GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+            "used_gpu_memory_bytes": 1054867456
+          }
+        ],
+        "limitations": [
+          "NVIDIA process visibility and memory values are observational and are not enforcement guarantees",
+          "same-user processes outside registered systemd units are outside the isolation boundary"
+        ],
+        "observed_at": "2026-10-21T18:48:15.147727+00:00",
+        "operation_id": "qualification-handoff-cbd0e2520f41:baseline:0",
+        "process_mapping_state": "observed",
+        "profile_id": "qualification-llama-backend",
+        "profile_version": "1",
+        "source": "nvidia-smi+invocation-verified-systemd-unit-cgroups",
+        "state": "observed"
+      }
+    },
+    "reservation": {
+      "allocations": [
+        {
+          "mode": "shared",
+          "quantities": {
+            "memory_bytes": 2147483648.0
+          },
+          "resource_id": "gpu:testlsserver:GPU-21131915-1488-23af-38dd-1743ae1f5cc8"
+        }
+      ],
+      "created_at": "2026-10-21T18:47:47.534730+00:00",
+      "exclusive_conflict_domains": [],
+      "expires_at": "2026-10-21T19:00:17.534730+00:00",
+      "fencing_token": 2,
+      "owner_context": {},
+      "owner_id": "qualification",
+      "request_digest": "cb14ef5550faa5d0d1b079662673dc25417814c7e88220ea3b45f8b5c6580d8a",
+      "reservation_id": "handoff-44321487437fa65a38b1ac5f",
+      "source_owner_contexts": {
+        "ebfa5d6b-b44a-4a83-92dc-08fce668f156": {}
+      },
+      "state": "active",
+      "transferred_from_owners": [
+        "qualification"
+      ],
+      "transferred_lease_ids": [
+        "ebfa5d6b-b44a-4a83-92dc-08fce668f156"
+      ],
+      "usage_events": [
+        {
+          "allocations": [
+            {
+              "mode": "shared",
+              "quantities": {
+                "memory_bytes": 2147483648.0
+              },
+              "resource_id": "gpu:testlsserver:GPU-21131915-1488-23af-38dd-1743ae1f5cc8"
+            }
+          ],
+          "created_at": "2026-10-21T18:45:57.974094+00:00"
+        }
+      ]
+    },
+    "reservation_id": "handoff-44321487437fa65a38b1ac5f",
+    "restore_started_at": "2026-10-21T18:49:01.104777+00:00",
+    "restored_leases": [
+      {
+        "lease": {
+          "allocations": [
+            {
+              "mode": "shared",
+              "quantities": {
+                "memory_bytes": 2147483648.0
+              },
+              "resource_id": "gpu:testlsserver:GPU-21131915-1488-23af-38dd-1743ae1f5cc8"
+            }
+          ],
+          "expires_at": "2026-10-21T19:01:49.286622Z",
+          "fencing_token": 3,
+          "lease_id": "dff381b9-e7f8-547b-8fb4-3e5bcb35fd8f",
+          "owner_context": {},
+          "owner_id": "qualification",
+          "request_digest": "baf855f0ec21d1a2b2d874b8f4cbabc8fcd0cbb3ac8aa11d96ba12c3065295c9",
+          "schema_version": 1,
+          "state": "active"
+        },
+        "source_lease_id": "ebfa5d6b-b44a-4a83-92dc-08fce668f156"
+      }
+    ],
+    "resume_state": null,
+    "run_started_at": "2026-10-21T18:48:46.337318+00:00",
+    "spec": {
+      "backend_ids": [
+        "qualification-llama-fef7a5149e66"
+      ],
+      "continuation_refs": [
+        "device-scheduler-qualification-frame"
+      ],
+      "deadline": "2026-10-21T19:17:44.500765Z",
+      "drain_timeout_seconds": 90.0,
+      "eviction_grants": [
+        {
+          "backend_id": "qualification-llama-fef7a5149e66",
+          "expires_at": "2026-10-21T19:19:44.500765Z",
+          "grant_id": "grant-9cf8a7acb6414c45ab2c3e048aef8711",
+          "granted_by": "qualification",
+          "scope": "backend:qualification-llama-fef7a5149e66"
+        }
+      ],
+      "handoff_id": "qualification-handoff-cbd0e2520f41",
+      "jobs": [
+        {
+          "argv": [
+            "/home/tumlinson/device-scheduler/.venv/bin/python",
+            "/home/tumlinson/device-scheduler/scripts/qualification_gpu_probe.py",
+            "--gpu-uuid",
+            "GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+            "--memory-bytes",
+            "134217728"
+          ],
+          "deadline": null,
+          "dependencies": [],
+          "environment": {
+            "CUDA_DEVICE_ORDER": "PCI_BUS_ID",
+            "CUDA_VISIBLE_DEVICES": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8"
+          },
+          "event_trigger": null,
+          "idempotency_key": null,
+          "interruption": {
+            "cancellation_supported": true,
+            "checkpoint_supported": false,
+            "cooperative_yield": false,
+            "restart_safe": false
+          },
+          "max_attempts": 1,
+          "not_before": null,
+          "owner_id": "qualification",
+          "preconditions": [],
+          "priority": 90,
+          "priority_class": "interactive",
+          "profile_id": null,
+          "resources": [
+            {
+              "kind": "gpu",
+              "mode": "shared",
+              "quantities": {
+                "memory_bytes": 268435456.0
+              },
+              "same_host": true,
+              "schema_version": 1,
+              "selectors": {
+                "uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8"
+              },
+              "topology_constraints": {}
+            }
+          ],
+          "schema_version": 1,
+          "secret_refs": [],
+          "tags": [],
+          "timeout_seconds": 180.0,
+          "working_directory": "/home/tumlinson/device-scheduler"
+        }
+      ],
+      "owner_id": "qualification",
+      "resource_envelope": [
+        {
+          "kind": "gpu",
+          "mode": "shared",
+          "quantities": {
+            "memory_bytes": 2147483648.0
+          },
+          "same_host": true,
+          "schema_version": 1,
+          "selectors": {
+            "uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8"
+          },
+          "topology_constraints": {}
+        }
+      ],
+      "restore_timeout_seconds": 360.0,
+      "run_timeout_seconds": 240.0,
+      "schema_version": 1
+    },
+    "state": "complete",
+    "suspended_refs": [
+      "device-scheduler-qualification-frame"
+    ],
+    "updated_at": "2026-10-21T18:49:37.143892+00:00"
+  },
+  "handoff_submission": {
+    "backend_snapshots": {
+      "qualification-llama-fef7a5149e66": {
+        "allocations": [
+          {
+            "mode": "shared",
+            "quantities": {
+              "memory_bytes": 2147483648.0
+            },
+            "resource_id": "gpu:testlsserver:GPU-21131915-1488-23af-38dd-1743ae1f5cc8"
+          }
+        ],
+        "execution_handle": {
+          "adapter_id": "systemd-user-unit",
+          "external_id": "device-scheduler-attempt-1430891b6b7320e2bcb1d8fba9dc1506.service",
+          "identity": "backend-restore-2378895ce5b0545f7005fd4487c488de",
+          "metadata": {
+            "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-1430891b6b7320e2bcb1d8fba9dc1506.service",
+            "description": "Device Scheduler attempt backend-restore-2378895ce5b0545f7005fd4487c488de",
+            "execution_root": "/tmp/device-scheduler-gpu-handoff-y6slrrt5/state/backends/backend-76b7d6522ad398fb1e58746c",
+            "handle_version": 1,
+            "invocation_id": "623aea6ba1964f6d97e524be3ba9fcde",
+            "profile_id": "qualification-llama-exec",
+            "profile_version": "1"
+          },
+          "started_at": "2026-10-21T18:45:58.130716Z"
+        },
+        "lease_id": "ebfa5d6b-b44a-4a83-92dc-08fce668f156",
+        "resources": [
+          {
+            "attributes": {
+              "index_observation": 0,
+              "inventory_observed_at": "2026-10-21T18:47:42.591152+00:00",
+              "managed_process_ids": [
+                279514
+              ],
+              "memory_enforcement": "accounting_only",
+              "memory_free_bytes_observation": 15870197760,
+              "name": "Tesla V100-SXM2-16GB",
+              "pci_bus_id": "00000000:02:00.0",
+              "process_count_observation": 1,
+              "process_identity_unknown_count": 0,
+              "process_mapping_state": "observed",
+              "process_observed_at": "2026-10-21T18:47:42.591152+00:00",
+              "process_telemetry": "compute-apps-visible",
+              "process_telemetry_state": "observed",
+              "processes_observation": [
+                {
+                  "gpu_uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+                  "identity_unknown": false,
+                  "pid": 279514,
+                  "process_name": "/home/tumlinson/Software/llama.cpp/build/bin/llama-server",
+                  "used_memory_bytes": 1054867456
+                }
+              ],
+              "unmanaged_process_count": 0,
+              "utilization_percent_observation": 0,
+              "uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8"
+            },
+            "capabilities": [
+              "nvidia-smi-compute-process-telemetry",
+              "shared-admission",
+              "whole-device-exclusive-admission",
+              "memory-accounting-only"
+            ],
+            "capacities": {
+              "memory_bytes": 17179869184.0
+            },
+            "conflict_domains": [
+              "gpu-exclusive:testlsserver:GPU-21131915-1488-23af-38dd-1743ae1f5cc8"
+            ],
+            "host_id": "testlsserver",
+            "kind": "gpu",
+            "resource_id": "gpu:testlsserver:GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+            "schema_version": 1,
+            "topology": {
+              "links": [],
+              "pci_bus_id": "00000000:02:00.0",
+              "topology_state": "partial"
+            }
+          }
+        ],
+        "spec": {
+          "adapter_id": "managed-llama.cpp",
+          "attached_consumers": [
+            "device-scheduler-qualification-frame"
+          ],
+          "backend_id": "qualification-llama-fef7a5149e66",
+          "configuration_ref": "qualification-llama-backend",
+          "eviction_contract": {
+            "consumer_ack_required": true,
+            "drain_timeout_seconds": 90.0,
+            "model_eviction_requires_explicit_grant": true
+          },
+          "host_id": "testlsserver",
+          "pinned_configuration": {
+            "profile_version": "1"
+          },
+          "profile_id": "qualification-llama-backend",
+          "residency_requirements": [
+            {
+              "kind": "gpu",
+              "mode": "shared",
+              "quantities": {
+                "memory_bytes": 2147483648.0
+              },
+              "same_host": true,
+              "schema_version": 1,
+              "selectors": {
+                "uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8"
+              },
+              "topology_constraints": {}
+            }
+          ],
+          "schema_version": 1
+        }
+      }
+    },
+    "cancel_reason": null,
+    "cancel_requested": false,
+    "continuation_refs": [
+      "device-scheduler-qualification-frame"
+    ],
+    "created_at": "2026-10-21T18:47:44.674258+00:00",
+    "effects": {},
+    "error": null,
+    "handoff_id": "qualification-handoff-cbd0e2520f41",
+    "idempotency_key": "qualify-qualification-handoff-cbd0e2520f41",
+    "job_ids": [],
+    "job_results": {},
+    "owner_id": "qualification",
+    "phase": "reserve",
+    "reclamation_baseline_attempts": {},
+    "reclamation_baselines": {},
+    "reservation": null,
+    "reservation_id": "handoff-44321487437fa65a38b1ac5f",
+    "resume_state": null,
+    "spec": {
+      "backend_ids": [
+        "qualification-llama-fef7a5149e66"
+      ],
+      "continuation_refs": [
+        "device-scheduler-qualification-frame"
+      ],
+      "deadline": "2026-10-21T19:17:44.500765Z",
+      "drain_timeout_seconds": 90.0,
+      "eviction_grants": [
+        {
+          "backend_id": "qualification-llama-fef7a5149e66",
+          "expires_at": "2026-10-21T19:19:44.500765Z",
+          "grant_id": "grant-9cf8a7acb6414c45ab2c3e048aef8711",
+          "granted_by": "qualification",
+          "scope": "backend:qualification-llama-fef7a5149e66"
+        }
+      ],
+      "handoff_id": "qualification-handoff-cbd0e2520f41",
+      "jobs": [
+        {
+          "argv": [
+            "/home/tumlinson/device-scheduler/.venv/bin/python",
+            "/home/tumlinson/device-scheduler/scripts/qualification_gpu_probe.py",
+            "--gpu-uuid",
+            "GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+            "--memory-bytes",
+            "134217728"
+          ],
+          "deadline": null,
+          "dependencies": [],
+          "environment": {
+            "CUDA_DEVICE_ORDER": "PCI_BUS_ID",
+            "CUDA_VISIBLE_DEVICES": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8"
+          },
+          "event_trigger": null,
+          "idempotency_key": null,
+          "interruption": {
+            "cancellation_supported": true,
+            "checkpoint_supported": false,
+            "cooperative_yield": false,
+            "restart_safe": false
+          },
+          "max_attempts": 1,
+          "not_before": null,
+          "owner_id": "qualification",
+          "preconditions": [],
+          "priority": 90,
+          "priority_class": "interactive",
+          "profile_id": null,
+          "resources": [
+            {
+              "kind": "gpu",
+              "mode": "shared",
+              "quantities": {
+                "memory_bytes": 268435456.0
+              },
+              "same_host": true,
+              "schema_version": 1,
+              "selectors": {
+                "uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8"
+              },
+              "topology_constraints": {}
+            }
+          ],
+          "schema_version": 1,
+          "secret_refs": [],
+          "tags": [],
+          "timeout_seconds": 180.0,
+          "working_directory": "/home/tumlinson/device-scheduler"
+        }
+      ],
+      "owner_id": "qualification",
+      "resource_envelope": [
+        {
+          "kind": "gpu",
+          "mode": "shared",
+          "quantities": {
+            "memory_bytes": 2147483648.0
+          },
+          "same_host": true,
+          "schema_version": 1,
+          "selectors": {
+            "uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8"
+          },
+          "topology_constraints": {}
+        }
+      ],
+      "restore_timeout_seconds": 360.0,
+      "run_timeout_seconds": 240.0,
+      "schema_version": 1
+    },
+    "state": "requested",
+    "suspended_refs": [],
+    "updated_at": "2026-10-21T18:47:44.674271+00:00"
+  },
+  "initial_backend": {
+    "execution_handle": {
+      "adapter_id": "systemd-user-unit",
+      "external_id": "device-scheduler-attempt-1430891b6b7320e2bcb1d8fba9dc1506.service",
+      "identity": "backend-restore-2378895ce5b0545f7005fd4487c488de",
+      "metadata": {
+        "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-1430891b6b7320e2bcb1d8fba9dc1506.service",
+        "description": "Device Scheduler attempt backend-restore-2378895ce5b0545f7005fd4487c488de",
+        "execution_root": "/tmp/device-scheduler-gpu-handoff-y6slrrt5/state/backends/backend-76b7d6522ad398fb1e58746c",
+        "handle_version": 1,
+        "invocation_id": "623aea6ba1964f6d97e524be3ba9fcde",
+        "profile_id": "qualification-llama-exec",
+        "profile_version": "1"
+      },
+      "started_at": "2026-10-21T18:45:58.130716Z"
+    },
+    "frame_shift_gate_after_start": {
+      "active_generations": 0,
+      "active_generations_source": "frameshift-provider-leases-upper-bound",
+      "active_generations_state": "observed",
+      "backend_id": "qualification-llama-fef7a5149e66",
+      "closed": false,
+      "configured": true,
+      "epoch": 1,
+      "open": true,
+      "operation_id": "backend-start:qualification-llama-fef7a5149e66",
+      "state": "open",
+      "updated_at": "2026-10-21T18:46:21.599697+00:00"
+    },
+    "gpu_observation": {
+      "inventory_observed_at": "2026-10-21T18:46:23.002172+00:00",
+      "memory_free_bytes": 15979249664,
+      "process_count": 1,
+      "process_observed_at": "2026-10-21T18:46:24.385974+00:00"
+    },
+    "process_ids": [
+      279514
+    ],
+    "used_gpu_memory_bytes": 945815552
+  },
+  "latest_backend_start_record": {
+    "backend_id": "qualification-llama-fef7a5149e66",
+    "execution_handle": {
+      "adapter_id": "systemd-user-unit",
+      "external_id": "device-scheduler-attempt-1430891b6b7320e2bcb1d8fba9dc1506.service",
+      "identity": "backend-restore-2378895ce5b0545f7005fd4487c488de",
+      "metadata": {
+        "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-1430891b6b7320e2bcb1d8fba9dc1506.service",
+        "description": "Device Scheduler attempt backend-restore-2378895ce5b0545f7005fd4487c488de",
+        "execution_root": "/tmp/device-scheduler-gpu-handoff-y6slrrt5/state/backends/backend-76b7d6522ad398fb1e58746c",
+        "handle_version": 1,
+        "invocation_id": "623aea6ba1964f6d97e524be3ba9fcde",
+        "profile_id": "qualification-llama-exec",
+        "profile_version": "1"
+      },
+      "started_at": "2026-10-21T18:45:58.130716Z"
+    },
+    "id": "qualification-llama-fef7a5149e66",
+    "lease_id": "ebfa5d6b-b44a-4a83-92dc-08fce668f156",
+    "observation": {
+      "active_generations": 0,
+      "admission": {
+        "admission_epoch": 1,
+        "admission_open": true,
+        "backend_id": "qualification-llama-fef7a5149e66",
+        "open_receipt": {
+          "backend_id": "qualification-llama-fef7a5149e66",
+          "closed": false,
+          "configured": true,
+          "epoch": 1,
+          "open": true,
+          "opened": true,
+          "operation_id": "backend-start:qualification-llama-fef7a5149e66",
+          "state": "open"
+        },
+        "operation_id": "backend-start:qualification-llama-fef7a5149e66",
+        "state": "ready"
+      },
+      "admission_closed": true,
+      "admission_epoch": 1,
+      "admission_observation": {
+        "active_generations": 0,
+        "active_generations_source": "frameshift-provider-leases-upper-bound",
+        "admission_closed": true,
+        "admission_epoch": 1,
+        "admission_operation_id": "backend-start:qualification-llama-fef7a5149e66",
+        "admission_state": "closed",
+        "document": {
+          "active_generations": 0,
+          "active_generations_source": "frameshift-provider-leases-upper-bound",
+          "active_generations_state": "observed",
+          "backend_id": "qualification-llama-fef7a5149e66",
+          "closed": true,
+          "configured": true,
+          "epoch": 1,
+          "open": false,
+          "operation_id": "backend-start:qualification-llama-fef7a5149e66",
+          "state": "closed",
+          "updated_at": "2026-10-21T18:45:58.057147+00:00"
+        },
+        "state": "observed"
+      },
+      "admission_operation_id": "backend-start:qualification-llama-fef7a5149e66",
+      "admission_state": "closed",
+      "backend_id": "qualification-llama-fef7a5149e66",
+      "evidence": {
+        "adapter": "managed-llama.cpp",
+        "observed_at": "2026-10-21T18:46:21.569163+00:00"
+      },
+      "execution": {
+        "active_state": "active",
+        "cleanup_verified": false,
+        "evidence": {
+          "adapter": "systemd-user-unit/v1",
+          "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-1430891b6b7320e2bcb1d8fba9dc1506.service",
+          "invocation_id": "623aea6ba1964f6d97e524be3ba9fcde",
+          "main_code": "0",
+          "unit_description": "Device Scheduler attempt backend-restore-2378895ce5b0545f7005fd4487c488de"
+        },
+        "exit_code": null,
+        "invocation_id": "623aea6ba1964f6d97e524be3ba9fcde",
+        "logs": "0.00.852.151 I cmn  common_param: common_params_print_info: verbosity = 3 (adjust with the `-lv N` CLI arg)\n0.00.852.969 W srv  llama_server: -----------------\n0.00.852.973 W srv  llama_server: CORS is set to allow all origins ('*') and no API key is set\n0.00.852.973 W srv  llama_server: this can be a security risk (cross-origin attacks)\n0.00.852.973 W srv  llama_server: more info: https://github.com/ggml-org/llama.cpp/pull/25655\n0.00.852.974 W srv  llama_server: -----------------\n0.00.854.573 I srv    load_model: loading model '/home/tumlinson/.local/share/core4/models/qwen3.6-35b-a3b-q4-k-m/671e47e0ec53c665d048b98c3ecbfd5236b5ca9c3e02ed19fc8f81f7b85140c7/model.gguf'\n0.15.413.643 I cmn          init: llama threadpool init, n_threads = 40\n0.19.151.257 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 4096, kv_unified = 'false'\n0.19.157.661 I srv          init: chat template supports preserving reasoning, consider enabling it via --reasoning-preserve\n0.19.157.707 I srv  llama_server: model loaded\n0.19.157.731 I srv  llama_server: listening on http://127.0.0.1:50075\n",
+        "logs_error": null,
+        "logs_truncated": false,
+        "result": "success",
+        "state": "running",
+        "substate": "running",
+        "unit_name": "device-scheduler-attempt-1430891b6b7320e2bcb1d8fba9dc1506.service"
+      },
+      "execution_handle": {
+        "adapter_id": "systemd-user-unit",
+        "external_id": "device-scheduler-attempt-1430891b6b7320e2bcb1d8fba9dc1506.service",
+        "identity": "backend-restore-2378895ce5b0545f7005fd4487c488de",
+        "metadata": {
+          "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-1430891b6b7320e2bcb1d8fba9dc1506.service",
+          "description": "Device Scheduler attempt backend-restore-2378895ce5b0545f7005fd4487c488de",
+          "execution_root": "/tmp/device-scheduler-gpu-handoff-y6slrrt5/state/backends/backend-76b7d6522ad398fb1e58746c",
+          "handle_version": 1,
+          "invocation_id": "623aea6ba1964f6d97e524be3ba9fcde",
+          "profile_id": "qualification-llama-exec",
+          "profile_version": "1"
+        },
+        "started_at": "2026-10-21T18:45:58.130716Z"
+      },
+      "generation_observation": {
+        "active_generations": 0,
+        "admission_observation": {
+          "active_generations": 0,
+          "active_generations_source": "frameshift-provider-leases-upper-bound",
+          "admission_closed": true,
+          "admission_epoch": 1,
+          "admission_operation_id": "backend-start:qualification-llama-fef7a5149e66",
+          "admission_state": "closed",
+          "document": {
+            "active_generations": 0,
+            "active_generations_source": "frameshift-provider-leases-upper-bound",
+            "active_generations_state": "observed",
+            "backend_id": "qualification-llama-fef7a5149e66",
+            "closed": true,
+            "configured": true,
+            "epoch": 1,
+            "open": false,
+            "operation_id": "backend-start:qualification-llama-fef7a5149e66",
+            "state": "closed",
+            "updated_at": "2026-10-21T18:45:58.057147+00:00"
+          },
+          "state": "observed"
+        },
+        "combination": "max(provider-lease-upper-bound, physical-non-idle-slot-count)",
+        "frameshift_provider_lease_upper_bound": 0,
+        "frameshift_state": {
+          "active_generations": 0,
+          "active_generations_source": "frameshift-provider-leases-upper-bound",
+          "admission_closed": true,
+          "admission_epoch": 1,
+          "admission_operation_id": "backend-start:qualification-llama-fef7a5149e66",
+          "admission_state": "closed",
+          "document": {
+            "active_generations": 0,
+            "active_generations_source": "frameshift-provider-leases-upper-bound",
+            "active_generations_state": "observed",
+            "backend_id": "qualification-llama-fef7a5149e66",
+            "closed": true,
+            "configured": true,
+            "epoch": 1,
+            "open": false,
+            "operation_id": "backend-start:qualification-llama-fef7a5149e66",
+            "state": "closed",
+            "updated_at": "2026-10-21T18:45:58.057147+00:00"
+          },
+          "state": "observed"
+        },
+        "limitations": [
+          "FrameShift count covers only registered provider users under the frameshift-only standing contract",
+          "llama /slots is observational and requires the server to start with --slots",
+          "same-administrative-domain access is not hostile-client isolation"
+        ],
+        "llama_slots": {
+          "processing": 0,
+          "total": 1,
+          "url": "http://127.0.0.1:50075/slots"
+        },
+        "state": "observed"
+      },
+      "generation_state": "observed",
+      "profile_id": "qualification-llama-backend",
+      "profile_version": "1",
+      "readiness": {
+        "backend_id": "qualification-llama-fef7a5149e66",
+        "execution_state": "running",
+        "health": {
+          "status": "ok"
+        },
+        "http_status": 200,
+        "identity_verified": true,
+        "model_identity": "device-scheduler-qualification",
+        "operation_id": "backend-start:qualification-llama-fef7a5149e66",
+        "ready": true,
+        "state": "ready"
+      },
+      "state": "ready"
+    },
+    "owner": "qualification",
+    "registered_at": "2026-10-21T18:45:57.794471Z",
+    "spec": {
+      "adapter_id": "managed-llama.cpp",
+      "attached_consumers": [],
+      "backend_id": "qualification-llama-fef7a5149e66",
+      "configuration_ref": "qualification-llama-backend",
+      "eviction_contract": {
+        "consumer_ack_required": true,
+        "drain_timeout_seconds": 90.0,
+        "model_eviction_requires_explicit_grant": true
+      },
+      "host_id": "testlsserver",
+      "pinned_configuration": {
+        "profile_version": "1"
+      },
+      "profile_id": "qualification-llama-backend",
+      "residency_requirements": [
+        {
+          "kind": "gpu",
+          "mode": "shared",
+          "quantities": {
+            "memory_bytes": 2147483648.0
+          },
+          "same_host": true,
+          "schema_version": 1,
+          "selectors": {
+            "uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8"
+          },
+          "topology_constraints": {}
+        }
+      ],
+      "schema_version": 1
+    },
+    "start_admission_receipt": {
+      "active_generations": 0,
+      "active_generations_source": "frameshift-provider-leases-upper-bound",
+      "admission_closed": true,
+      "admission_epoch": 1,
+      "admission_supported": true,
+      "backend_id": "qualification-llama-fef7a5149e66",
+      "close_receipt": {
+        "active_generations": 0,
+        "active_generations_source": "frameshift-provider-leases-upper-bound",
+        "active_generations_state": "observed",
+        "backend_id": "qualification-llama-fef7a5149e66",
+        "closed": true,
+        "configured": true,
+        "epoch": 1,
+        "invalidated_offers": 0,
+        "open": false,
+        "operation_id": "backend-start:qualification-llama-fef7a5149e66",
+        "state": "closed"
+      },
+      "eviction_supported": true,
+      "evidence": {
+        "rechecked": true,
+        "source": "authenticated-frameshift-admission-api"
+      },
+      "operation_id": "backend-start:qualification-llama-fef7a5149e66",
+      "state": "admission_closed"
+    },
+    "start_operation_id": "backend-start:qualification-llama-fef7a5149e66",
+    "start_phase": "launch_intent",
+    "state": "ready",
+    "updated_at": "2026-10-21T18:46:21.611302Z"
+  },
+  "limitations": [
+    "single-user cooperative host; CUDA_VISIBLE_DEVICES is routing, not hostile-code isolation",
+    "one 128 MiB CUDA allocation/copy/free smoke; no kernel correctness suite or performance claim",
+    "manual exact-unit fixture cleanup is qualification-only and is not a production backend stop API",
+    "one fresh FrameShift frame and one local llama.cpp backend; no multi-host or restart matrix"
+  ],
+  "manual_fixture_cleanup": {
+    "authorized_scope": "cancel only the exact returned restored systemd unit after continuation detach",
+    "consumer_revocation": {
+      "backend_id": "qualification-llama-fef7a5149e66",
+      "contract_id": "device-scheduler-qualification-turn-boundary-v1",
+      "revoked": true
+    },
+    "gpu_after_stop": {
+      "gpu_uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+      "inventory_observed_at": "2026-10-21T18:51:27.595433+00:00",
+      "memory_free_bytes": 16929259520,
+      "process_count": 0,
+      "process_observed_at": "2026-10-21T18:51:28.647118+00:00"
+    },
+    "ledger_backend_state_after_manual_stop": "ready (historical; no production stop route invoked)",
+    "production_stop_api_claimed": false,
+    "systemd_cancel_receipt": {
+      "cleanup_verified": true,
+      "evidence": {
+        "adapter": "systemd-user-unit/v1",
+        "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-0dc53a484c1246a9659db30ed9b8ddd7.service",
+        "invocation_id": "3c894eb6372a41d58936fea5e68cfaff",
+        "post_stop_unit_state": "not-found",
+        "unit_description": "Device Scheduler attempt backend-restore-79f10cca85fc27b145d5d00dab172412"
+      },
+      "invocation_id": "3c894eb6372a41d58936fea5e68cfaff",
+      "operation_id": "qualification-manual-stop:qualification-llama-fef7a5149e66",
+      "reason": "unit was unloaded after systemd acknowledged stop",
+      "state": "unknown",
+      "stop_requested": true,
+      "unit_name": "device-scheduler-attempt-0dc53a484c1246a9659db30ed9b8ddd7.service"
+    },
+    "verified_gpu_processes_gone": true
+  },
+  "ordinary_suspension": {
+    "execution_handle": {
+      "adapter_id": "systemd-user-unit",
+      "external_id": "device-scheduler-attempt-1430891b6b7320e2bcb1d8fba9dc1506.service",
+      "identity": "backend-restore-2378895ce5b0545f7005fd4487c488de",
+      "metadata": {
+        "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-1430891b6b7320e2bcb1d8fba9dc1506.service",
+        "description": "Device Scheduler attempt backend-restore-2378895ce5b0545f7005fd4487c488de",
+        "execution_root": "/tmp/device-scheduler-gpu-handoff-y6slrrt5/state/backends/backend-76b7d6522ad398fb1e58746c",
+        "handle_version": 1,
+        "invocation_id": "623aea6ba1964f6d97e524be3ba9fcde",
+        "profile_id": "qualification-llama-exec",
+        "profile_version": "1"
+      },
+      "started_at": "2026-10-21T18:45:58.130716Z"
+    },
+    "frame_state": "suspended",
+    "generation": 1,
+    "gpu_observation": {
+      "inventory_observed_at": "2026-10-21T18:47:42.554024+00:00",
+      "memory_free_bytes": 15870197760,
+      "process_count": 1,
+      "process_observed_at": "2026-10-21T18:47:42.828609+00:00"
+    },
+    "process_ids": [
+      279514
+    ],
+    "used_gpu_memory_bytes": 1054867456
+  },
+  "parent_grant": {
+    "gpu_uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+    "owner_id": "foreground:a5f55df4-cf47-46c0-9ad8-ed45b1fc1cb8",
+    "pid": 231543,
+    "process_start": "1816730",
+    "resource_ids": [
+      "accelerator:GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+      "interference:nvlink:runtime:0-2",
+      "interference:pcie:00000000:numa:0"
+    ]
+  },
+  "probe_job": {
+    "job": {
+      "attempt": {
+        "attempt_id": "976e0e5c-0a0f-4b32-aba9-2cc1d2cb71da",
+        "cleanup_verified": true,
+        "created_at": "2026-10-21T18:48:46.405703Z",
+        "error": {},
+        "execution_context": {
+          "allocations": [
+            {
+              "mode": "shared",
+              "quantities": {
+                "memory_bytes": 268435456.0
+              },
+              "resource_id": "gpu:testlsserver:GPU-21131915-1488-23af-38dd-1743ae1f5cc8"
+            }
+          ],
+          "claim_id": "job-phase:7c0c4d5f-5283-46f5-bbea-f932c53786bc",
+          "fencing_token": 2,
+          "purpose": "job",
+          "resources": [
+            {
+              "attributes": {
+                "index_observation": 0,
+                "inventory_observed_at": "2026-10-21T18:48:46.275705+00:00",
+                "managed_process_ids": [],
+                "memory_enforcement": "accounting_only",
+                "memory_free_bytes_observation": 16929259520,
+                "name": "Tesla V100-SXM2-16GB",
+                "pci_bus_id": "00000000:02:00.0",
+                "process_count_observation": 0,
+                "process_identity_unknown_count": 0,
+                "process_mapping_state": "unknown",
+                "process_observed_at": "2026-10-21T18:48:46.275705+00:00",
+                "process_telemetry": "compute-apps-visible",
+                "process_telemetry_state": "observed",
+                "processes_observation": [],
+                "unmanaged_process_count": 0,
+                "utilization_percent_observation": 0,
+                "uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8"
+              },
+              "capabilities": [
+                "nvidia-smi-compute-process-telemetry",
+                "shared-admission",
+                "whole-device-exclusive-admission",
+                "memory-accounting-only"
+              ],
+              "capacities": {
+                "memory_bytes": 17179869184.0
+              },
+              "conflict_domains": [
+                "gpu-exclusive:testlsserver:GPU-21131915-1488-23af-38dd-1743ae1f5cc8"
+              ],
+              "host_id": "testlsserver",
+              "kind": "gpu",
+              "resource_id": "gpu:testlsserver:GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+              "schema_version": 1,
+              "topology": {
+                "links": [],
+                "pci_bus_id": "00000000:02:00.0",
+                "topology_state": "partial"
+              }
+            }
+          ],
+          "schema_version": 1
+        },
+        "execution_handle": {
+          "adapter_id": "systemd-user-unit",
+          "external_id": "device-scheduler-attempt-4dadd6d50814c76d6986321f200f94bd.service",
+          "identity": "976e0e5c-0a0f-4b32-aba9-2cc1d2cb71da",
+          "metadata": {
+            "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-4dadd6d50814c76d6986321f200f94bd.service",
+            "description": "Device Scheduler attempt 976e0e5c-0a0f-4b32-aba9-2cc1d2cb71da",
+            "execution_root": "/tmp/device-scheduler-gpu-handoff-y6slrrt5/state/executions",
+            "handle_version": 1,
+            "invocation_id": "ef90be6715934efb8867b4b0b36e84d0",
+            "profile_id": null,
+            "profile_version": null
+          },
+          "started_at": "2026-10-21T18:48:46.462607Z"
+        },
+        "finished_at": "2026-10-21T18:48:53.596948Z",
+        "id": "976e0e5c-0a0f-4b32-aba9-2cc1d2cb71da",
+        "job_id": "7c0c4d5f-5283-46f5-bbea-f932c53786bc",
+        "operation_id": "start:976e0e5c-0a0f-4b32-aba9-2cc1d2cb71da",
+        "result": {
+          "active_state": "active",
+          "adapter": "systemd-user-unit/v1",
+          "cleanup_verified": true,
+          "evidence": {
+            "adapter": "systemd-user-unit/v1",
+            "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-4dadd6d50814c76d6986321f200f94bd.service",
+            "invocation_id": "ef90be6715934efb8867b4b0b36e84d0",
+            "main_code": "1",
+            "unit_description": "Device Scheduler attempt 976e0e5c-0a0f-4b32-aba9-2cc1d2cb71da"
+          },
+          "exit_code": 0,
+          "invocation_id": "ef90be6715934efb8867b4b0b36e84d0",
+          "logs": "{\"gpu_uuid\": \"GPU-21131915-1488-23af-38dd-1743ae1f5cc8\", \"memory_bytes\": 134217728, \"performance_claim\": false, \"pid\": 289194, \"schema_version\": 1, \"status\": \"passed\", \"test\": \"finite-cuda-allocation-copy-free\", \"verified_bytes\": 134217728}\n",
+          "logs_error": null,
+          "logs_truncated": false,
+          "result": "success",
+          "state": "succeeded",
+          "stdout": "{\"gpu_uuid\": \"GPU-21131915-1488-23af-38dd-1743ae1f5cc8\", \"memory_bytes\": 134217728, \"performance_claim\": false, \"pid\": 289194, \"schema_version\": 1, \"status\": \"passed\", \"test\": \"finite-cuda-allocation-copy-free\", \"verified_bytes\": 134217728}\n",
+          "substate": "exited",
+          "unit_name": "device-scheduler-attempt-4dadd6d50814c76d6986321f200f94bd.service"
+        },
+        "started_at": "2026-10-21T18:48:46.462698Z",
+        "state": "succeeded"
+      },
+      "attempt_count": 1,
+      "attempt_id": "976e0e5c-0a0f-4b32-aba9-2cc1d2cb71da",
+      "blocked_reason": null,
+      "cleanup_verified": true,
+      "created_at": "2026-10-21T18:48:46.353766Z",
+      "decision_id": "7bfdeef4-65d8-46d1-95a3-9acbd15ff36a",
+      "id": "7c0c4d5f-5283-46f5-bbea-f932c53786bc",
+      "job_id": "7c0c4d5f-5283-46f5-bbea-f932c53786bc",
+      "lease_fencing_token": null,
+      "lease_id": null,
+      "owner": "qualification",
+      "owner_id": "qualification",
+      "reservation_id": "handoff-44321487437fa65a38b1ac5f",
+      "reservation_phase_id": "job-phase:7c0c4d5f-5283-46f5-bbea-f932c53786bc",
+      "result": {
+        "active_state": "active",
+        "adapter": "systemd-user-unit/v1",
+        "cleanup_verified": true,
+        "evidence": {
+          "adapter": "systemd-user-unit/v1",
+          "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-4dadd6d50814c76d6986321f200f94bd.service",
+          "invocation_id": "ef90be6715934efb8867b4b0b36e84d0",
+          "main_code": "1",
+          "unit_description": "Device Scheduler attempt 976e0e5c-0a0f-4b32-aba9-2cc1d2cb71da"
+        },
+        "exit_code": 0,
+        "invocation_id": "ef90be6715934efb8867b4b0b36e84d0",
+        "logs": "{\"gpu_uuid\": \"GPU-21131915-1488-23af-38dd-1743ae1f5cc8\", \"memory_bytes\": 134217728, \"performance_claim\": false, \"pid\": 289194, \"schema_version\": 1, \"status\": \"passed\", \"test\": \"finite-cuda-allocation-copy-free\", \"verified_bytes\": 134217728}\n",
+        "logs_error": null,
+        "logs_truncated": false,
+        "result": "success",
+        "state": "succeeded",
+        "stdout": "{\"gpu_uuid\": \"GPU-21131915-1488-23af-38dd-1743ae1f5cc8\", \"memory_bytes\": 134217728, \"performance_claim\": false, \"pid\": 289194, \"schema_version\": 1, \"status\": \"passed\", \"test\": \"finite-cuda-allocation-copy-free\", \"verified_bytes\": 134217728}\n",
+        "substate": "exited",
+        "unit_name": "device-scheduler-attempt-4dadd6d50814c76d6986321f200f94bd.service"
+      },
+      "spec": {
+        "argv": [
+          "/home/tumlinson/device-scheduler/.venv/bin/python",
+          "/home/tumlinson/device-scheduler/scripts/qualification_gpu_probe.py",
+          "--gpu-uuid",
+          "GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+          "--memory-bytes",
+          "134217728"
+        ],
+        "deadline": null,
+        "dependencies": [],
+        "environment": {
+          "CUDA_DEVICE_ORDER": "PCI_BUS_ID",
+          "CUDA_VISIBLE_DEVICES": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8"
+        },
+        "event_trigger": null,
+        "idempotency_key": null,
+        "interruption": {
+          "cancellation_supported": true,
+          "checkpoint_supported": false,
+          "cooperative_yield": false,
+          "restart_safe": false
+        },
+        "max_attempts": 1,
+        "not_before": null,
+        "owner_id": "qualification",
+        "preconditions": [],
+        "priority": 90,
+        "priority_class": "interactive",
+        "profile_id": null,
+        "resources": [
+          {
+            "kind": "gpu",
+            "mode": "shared",
+            "quantities": {
+              "memory_bytes": 268435456.0
+            },
+            "same_host": true,
+            "schema_version": 1,
+            "selectors": {
+              "uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8"
+            },
+            "topology_constraints": {}
+          }
+        ],
+        "schema_version": 1,
+        "secret_refs": [],
+        "tags": [],
+        "timeout_seconds": 180.0,
+        "working_directory": "/home/tumlinson/device-scheduler"
+      },
+      "state": "succeeded",
+      "updated_at": "2026-10-21T18:48:53.596948Z"
+    },
+    "logs": {
+      "attempt_id": "976e0e5c-0a0f-4b32-aba9-2cc1d2cb71da",
+      "cleanup_verified": true,
+      "job_id": "7c0c4d5f-5283-46f5-bbea-f932c53786bc",
+      "stderr": {
+        "omitted_lines": 0,
+        "original_bytes": 0,
+        "returned_bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "text": "",
+        "truncated": false
+      },
+      "stdout": {
+        "omitted_lines": 0,
+        "original_bytes": 241,
+        "returned_bytes": 241,
+        "sha256": "6502bf7e0e688d5db1443c61ae8fbacff7d5c55894af653f5abc77efa244c88d",
+        "text": "{\"gpu_uuid\": \"GPU-21131915-1488-23af-38dd-1743ae1f5cc8\", \"memory_bytes\": 134217728, \"performance_claim\": false, \"pid\": 289194, \"schema_version\": 1, \"status\": \"passed\", \"test\": \"finite-cuda-allocation-copy-free\", \"verified_bytes\": 134217728}\n",
+        "truncated": false
+      }
+    },
+    "probe_receipt": {
+      "gpu_uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+      "memory_bytes": 134217728,
+      "performance_claim": false,
+      "pid": 289194,
+      "schema_version": 1,
+      "status": "passed",
+      "test": "finite-cuda-allocation-copy-free",
+      "verified_bytes": 134217728
+    }
+  },
+  "receipt": "/tmp/device-scheduler-gpu-handoff-y6slrrt5/qualification.json",
+  "restored_backend": {
+    "backend": {
+      "attached_consumers": [
+        "device-scheduler-qualification-frame"
+      ],
+      "backend_id": "qualification-llama-fef7a5149e66",
+      "execution_handle": {
+        "adapter_id": "systemd-user-unit",
+        "external_id": "device-scheduler-attempt-0dc53a484c1246a9659db30ed9b8ddd7.service",
+        "identity": "backend-restore-79f10cca85fc27b145d5d00dab172412",
+        "metadata": {
+          "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-0dc53a484c1246a9659db30ed9b8ddd7.service",
+          "description": "Device Scheduler attempt backend-restore-79f10cca85fc27b145d5d00dab172412",
+          "execution_root": "/tmp/device-scheduler-gpu-handoff-y6slrrt5/state/backends/backend-76b7d6522ad398fb1e58746c",
+          "handle_version": 1,
+          "invocation_id": "3c894eb6372a41d58936fea5e68cfaff",
+          "profile_id": "qualification-llama-exec",
+          "profile_version": "1"
+        },
+        "started_at": "2026-10-21T18:49:01.171228Z"
+      },
+      "id": "qualification-llama-fef7a5149e66",
+      "lease_id": "dff381b9-e7f8-547b-8fb4-3e5bcb35fd8f",
+      "observation": {
+        "active_generations": 0,
+        "admission": {
+          "admission_epoch": 1,
+          "admission_open": true,
+          "backend_id": "qualification-llama-fef7a5149e66",
+          "open_receipt": {
+            "backend_id": "qualification-llama-fef7a5149e66",
+            "closed": false,
+            "configured": true,
+            "epoch": 1,
+            "open": true,
+            "opened": true,
+            "operation_id": "backend-start:qualification-llama-fef7a5149e66",
+            "state": "open"
+          },
+          "operation_id": "backend-start:qualification-llama-fef7a5149e66",
+          "state": "ready"
+        },
+        "admission_closed": true,
+        "admission_epoch": 1,
+        "admission_observation": {
+          "active_generations": 0,
+          "active_generations_source": "frameshift-provider-leases-upper-bound",
+          "admission_closed": true,
+          "admission_epoch": 1,
+          "admission_operation_id": "backend-start:qualification-llama-fef7a5149e66",
+          "admission_state": "closed",
+          "document": {
+            "active_generations": 0,
+            "active_generations_source": "frameshift-provider-leases-upper-bound",
+            "active_generations_state": "observed",
+            "backend_id": "qualification-llama-fef7a5149e66",
+            "closed": true,
+            "configured": true,
+            "epoch": 1,
+            "open": false,
+            "operation_id": "backend-start:qualification-llama-fef7a5149e66",
+            "state": "closed",
+            "updated_at": "2026-10-21T18:45:58.057147+00:00"
+          },
+          "state": "observed"
+        },
+        "admission_operation_id": "backend-start:qualification-llama-fef7a5149e66",
+        "admission_state": "closed",
+        "backend_id": "qualification-llama-fef7a5149e66",
+        "evidence": {
+          "adapter": "managed-llama.cpp",
+          "observed_at": "2026-10-21T18:46:21.569163+00:00"
+        },
+        "execution": {
+          "active_state": "active",
+          "cleanup_verified": false,
+          "evidence": {
+            "adapter": "systemd-user-unit/v1",
+            "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-1430891b6b7320e2bcb1d8fba9dc1506.service",
+            "invocation_id": "623aea6ba1964f6d97e524be3ba9fcde",
+            "main_code": "0",
+            "unit_description": "Device Scheduler attempt backend-restore-2378895ce5b0545f7005fd4487c488de"
+          },
+          "exit_code": null,
+          "invocation_id": "623aea6ba1964f6d97e524be3ba9fcde",
+          "logs": "0.00.852.151 I cmn  common_param: common_params_print_info: verbosity = 3 (adjust with the `-lv N` CLI arg)\n0.00.852.969 W srv  llama_server: -----------------\n0.00.852.973 W srv  llama_server: CORS is set to allow all origins ('*') and no API key is set\n0.00.852.973 W srv  llama_server: this can be a security risk (cross-origin attacks)\n0.00.852.973 W srv  llama_server: more info: https://github.com/ggml-org/llama.cpp/pull/25655\n0.00.852.974 W srv  llama_server: -----------------\n0.00.854.573 I srv    load_model: loading model '/home/tumlinson/.local/share/core4/models/qwen3.6-35b-a3b-q4-k-m/671e47e0ec53c665d048b98c3ecbfd5236b5ca9c3e02ed19fc8f81f7b85140c7/model.gguf'\n0.15.413.643 I cmn          init: llama threadpool init, n_threads = 40\n0.19.151.257 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 4096, kv_unified = 'false'\n0.19.157.661 I srv          init: chat template supports preserving reasoning, consider enabling it via --reasoning-preserve\n0.19.157.707 I srv  llama_server: model loaded\n0.19.157.731 I srv  llama_server: listening on http://127.0.0.1:50075\n",
+          "logs_error": null,
+          "logs_truncated": false,
+          "result": "success",
+          "state": "running",
+          "substate": "running",
+          "unit_name": "device-scheduler-attempt-1430891b6b7320e2bcb1d8fba9dc1506.service"
+        },
+        "execution_handle": {
+          "adapter_id": "systemd-user-unit",
+          "external_id": "device-scheduler-attempt-1430891b6b7320e2bcb1d8fba9dc1506.service",
+          "identity": "backend-restore-2378895ce5b0545f7005fd4487c488de",
+          "metadata": {
+            "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-1430891b6b7320e2bcb1d8fba9dc1506.service",
+            "description": "Device Scheduler attempt backend-restore-2378895ce5b0545f7005fd4487c488de",
+            "execution_root": "/tmp/device-scheduler-gpu-handoff-y6slrrt5/state/backends/backend-76b7d6522ad398fb1e58746c",
+            "handle_version": 1,
+            "invocation_id": "623aea6ba1964f6d97e524be3ba9fcde",
+            "profile_id": "qualification-llama-exec",
+            "profile_version": "1"
+          },
+          "started_at": "2026-10-21T18:45:58.130716Z"
+        },
+        "generation_observation": {
+          "active_generations": 0,
+          "admission_observation": {
+            "active_generations": 0,
+            "active_generations_source": "frameshift-provider-leases-upper-bound",
+            "admission_closed": true,
+            "admission_epoch": 1,
+            "admission_operation_id": "backend-start:qualification-llama-fef7a5149e66",
+            "admission_state": "closed",
+            "document": {
+              "active_generations": 0,
+              "active_generations_source": "frameshift-provider-leases-upper-bound",
+              "active_generations_state": "observed",
+              "backend_id": "qualification-llama-fef7a5149e66",
+              "closed": true,
+              "configured": true,
+              "epoch": 1,
+              "open": false,
+              "operation_id": "backend-start:qualification-llama-fef7a5149e66",
+              "state": "closed",
+              "updated_at": "2026-10-21T18:45:58.057147+00:00"
+            },
+            "state": "observed"
+          },
+          "combination": "max(provider-lease-upper-bound, physical-non-idle-slot-count)",
+          "frameshift_provider_lease_upper_bound": 0,
+          "frameshift_state": {
+            "active_generations": 0,
+            "active_generations_source": "frameshift-provider-leases-upper-bound",
+            "admission_closed": true,
+            "admission_epoch": 1,
+            "admission_operation_id": "backend-start:qualification-llama-fef7a5149e66",
+            "admission_state": "closed",
+            "document": {
+              "active_generations": 0,
+              "active_generations_source": "frameshift-provider-leases-upper-bound",
+              "active_generations_state": "observed",
+              "backend_id": "qualification-llama-fef7a5149e66",
+              "closed": true,
+              "configured": true,
+              "epoch": 1,
+              "open": false,
+              "operation_id": "backend-start:qualification-llama-fef7a5149e66",
+              "state": "closed",
+              "updated_at": "2026-10-21T18:45:58.057147+00:00"
+            },
+            "state": "observed"
+          },
+          "limitations": [
+            "FrameShift count covers only registered provider users under the frameshift-only standing contract",
+            "llama /slots is observational and requires the server to start with --slots",
+            "same-administrative-domain access is not hostile-client isolation"
+          ],
+          "llama_slots": {
+            "processing": 0,
+            "total": 1,
+            "url": "http://127.0.0.1:50075/slots"
+          },
+          "state": "observed"
+        },
+        "generation_state": "observed",
+        "profile_id": "qualification-llama-backend",
+        "profile_version": "1",
+        "readiness": {
+          "backend_id": "qualification-llama-fef7a5149e66",
+          "execution_state": "running",
+          "health": {
+            "status": "ok"
+          },
+          "http_status": 200,
+          "identity_verified": true,
+          "model_identity": "device-scheduler-qualification",
+          "operation_id": "backend-start:qualification-llama-fef7a5149e66",
+          "ready": true,
+          "state": "ready"
+        },
+        "state": "ready"
+      },
+      "owner": "qualification",
+      "registered_at": "2026-10-21T18:45:57.794471Z",
+      "restoration_observation": {
+        "attempt_id": "backend-restore-79f10cca85fc27b145d5d00dab172412",
+        "backend_id": "qualification-llama-fef7a5149e66",
+        "evidence": {
+          "adapter": "managed-llama.cpp",
+          "observed_at": "2026-10-21T18:49:07.341663+00:00"
+        },
+        "execution_handle": {
+          "adapter_id": "systemd-user-unit",
+          "external_id": "device-scheduler-attempt-0dc53a484c1246a9659db30ed9b8ddd7.service",
+          "identity": "backend-restore-79f10cca85fc27b145d5d00dab172412",
+          "metadata": {
+            "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-0dc53a484c1246a9659db30ed9b8ddd7.service",
+            "description": "Device Scheduler attempt backend-restore-79f10cca85fc27b145d5d00dab172412",
+            "execution_root": "/tmp/device-scheduler-gpu-handoff-y6slrrt5/state/backends/backend-76b7d6522ad398fb1e58746c",
+            "handle_version": 1,
+            "invocation_id": "3c894eb6372a41d58936fea5e68cfaff",
+            "profile_id": "qualification-llama-exec",
+            "profile_version": "1"
+          },
+          "started_at": "2026-10-21T18:49:01.171228Z"
+        },
+        "operation_id": "qualification-handoff-cbd0e2520f41",
+        "profile_id": "qualification-llama-backend",
+        "profile_version": "1",
+        "readiness": {
+          "execution_state": "running",
+          "health": {
+            "status": "ok"
+          },
+          "http_status": 200,
+          "identity_verified": true,
+          "model_identity": "device-scheduler-qualification",
+          "ready": true,
+          "state": "ready"
+        },
+        "state": "ready"
+      },
+      "restoration_operation_id": "qualification-handoff-cbd0e2520f41",
+      "restored_at": "2026-10-21T18:49:19.286622+00:00",
+      "spec": {
+        "adapter_id": "managed-llama.cpp",
+        "attached_consumers": [
+          "device-scheduler-qualification-frame"
+        ],
+        "backend_id": "qualification-llama-fef7a5149e66",
+        "configuration_ref": "qualification-llama-backend",
+        "eviction_contract": {
+          "consumer_ack_required": true,
+          "drain_timeout_seconds": 90.0,
+          "model_eviction_requires_explicit_grant": true
+        },
+        "host_id": "testlsserver",
+        "pinned_configuration": {
+          "profile_version": "1"
+        },
+        "profile_id": "qualification-llama-backend",
+        "residency_requirements": [
+          {
+            "kind": "gpu",
+            "mode": "shared",
+            "quantities": {
+              "memory_bytes": 2147483648.0
+            },
+            "same_host": true,
+            "schema_version": 1,
+            "selectors": {
+              "uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8"
+            },
+            "topology_constraints": {}
+          }
+        ],
+        "schema_version": 1
+      },
+      "start_admission_receipt": {
+        "active_generations": 0,
+        "active_generations_source": "frameshift-provider-leases-upper-bound",
+        "admission_closed": true,
+        "admission_epoch": 1,
+        "admission_supported": true,
+        "backend_id": "qualification-llama-fef7a5149e66",
+        "close_receipt": {
+          "active_generations": 0,
+          "active_generations_source": "frameshift-provider-leases-upper-bound",
+          "active_generations_state": "observed",
+          "backend_id": "qualification-llama-fef7a5149e66",
+          "closed": true,
+          "configured": true,
+          "epoch": 1,
+          "invalidated_offers": 0,
+          "open": false,
+          "operation_id": "backend-start:qualification-llama-fef7a5149e66",
+          "state": "closed"
+        },
+        "eviction_supported": true,
+        "evidence": {
+          "rechecked": true,
+          "source": "authenticated-frameshift-admission-api"
+        },
+        "operation_id": "backend-start:qualification-llama-fef7a5149e66",
+        "state": "admission_closed"
+      },
+      "start_operation_id": "backend-start:qualification-llama-fef7a5149e66",
+      "start_phase": "launch_intent",
+      "state": "ready",
+      "updated_at": "2026-10-21T18:49:07.355978+00:00"
+    },
+    "execution_handle": {
+      "adapter_id": "systemd-user-unit",
+      "external_id": "device-scheduler-attempt-0dc53a484c1246a9659db30ed9b8ddd7.service",
+      "identity": "backend-restore-79f10cca85fc27b145d5d00dab172412",
+      "metadata": {
+        "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-0dc53a484c1246a9659db30ed9b8ddd7.service",
+        "description": "Device Scheduler attempt backend-restore-79f10cca85fc27b145d5d00dab172412",
+        "execution_root": "/tmp/device-scheduler-gpu-handoff-y6slrrt5/state/backends/backend-76b7d6522ad398fb1e58746c",
+        "handle_version": 1,
+        "invocation_id": "3c894eb6372a41d58936fea5e68cfaff",
+        "profile_id": "qualification-llama-exec",
+        "profile_version": "1"
+      },
+      "started_at": "2026-10-21T18:49:01.171228Z"
+    },
+    "gpu_observation": {
+      "inventory_observed_at": "2026-10-21T18:51:21.966173+00:00",
+      "memory_free_bytes": 15870197760,
+      "process_count": 1,
+      "process_observed_at": "2026-10-21T18:51:22.282374+00:00"
+    },
+    "llama_readiness": {
+      "health": {
+        "status": "ok"
+      },
+      "identity": {
+        "bos_token": "<|endoftext|>",
+        "build_info": "b10615-f280b2698",
+        "chat_template": "{%- set image_count = namespace(value=0) %}\n{%- set video_count = namespace(value=0) %}\n{%- macro render_content(content, do_vision_count, is_system_content=false) %}\n    {%- if content is string %}\n        {{- content }}\n    {%- elif content is iterable and content is not mapping %}\n        {%- for item in content %}\n            {%- if 'image' in item or 'image_url' in item or item.type == 'image' %}\n                {%- if is_system_content %}\n                    {{- raise_exception('System message cannot contain images.') }}\n                {%- endif %}\n                {%- if do_vision_count %}\n                    {%- set image_count.value = image_count.value + 1 %}\n                {%- endif %}\n                {%- if add_vision_id %}\n                    {{- 'Picture ' ~ image_count.value ~ ': ' }}\n                {%- endif %}\n                {{- '<|vision_start|><|image_pad|><|vision_end|>' }}\n            {%- elif 'video' in item or item.type == 'video' %}\n                {%- if is_system_content %}\n                    {{- raise_exception('System message cannot contain videos.') }}\n                {%- endif %}\n                {%- if do_vision_count %}\n                    {%- set video_count.value = video_count.value + 1 %}\n                {%- endif %}\n                {%- if add_vision_id %}\n                    {{- 'Video ' ~ video_count.value ~ ': ' }}\n                {%- endif %}\n                {{- '<|vision_start|><|video_pad|><|vision_end|>' }}\n            {%- elif 'text' in item %}\n                {{- item.text }}\n            {%- else %}\n                {{- raise_exception('Unexpected item type in content.') }}\n            {%- endif %}\n        {%- endfor %}\n    {%- elif content is none or content is undefined %}\n        {{- '' }}\n    {%- else %}\n        {{- raise_exception('Unexpected content type.') }}\n    {%- endif %}\n{%- endmacro %}\n{%- if not messages %}\n    {{- raise_exception('No messages provided.') }}\n{%- endif %}\n{%- if tools and tools is iterable and tools is not mapping %}\n    {{- '<|im_start|>system\\n' }}\n    {{- \"# Tools\\n\\nYou have access to the following functions:\\n\\n<tools>\" }}\n    {%- for tool in tools %}\n        {{- \"\\n\" }}\n        {{- tool | tojson }}\n    {%- endfor %}\n    {{- \"\\n</tools>\" }}\n    {{- '\\n\\nIf you choose to call a function ONLY reply in the following format with NO suffix:\\n\\n<tool_call>\\n<function=example_function_name>\\n<parameter=example_parameter_1>\\nvalue_1\\n</parameter>\\n<parameter=example_parameter_2>\\nThis is the value for the second parameter\\nthat can span\\nmultiple lines\\n</parameter>\\n</function>\\n</tool_call>\\n\\n<IMPORTANT>\\nReminder:\\n- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags\\n- Required parameters MUST be specified\\n- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after\\n- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls\\n</IMPORTANT>' }}\n    {%- if messages[0].role == 'system' %}\n        {%- set content = render_content(messages[0].content, false, true)|trim %}\n        {%- if content %}\n            {{- '\\n\\n' + content }}\n        {%- endif %}\n    {%- endif %}\n    {{- '<|im_end|>\\n' }}\n{%- else %}\n    {%- if messages[0].role == 'system' %}\n        {%- set content = render_content(messages[0].content, false, true)|trim %}\n        {{- '<|im_start|>system\\n' + content + '<|im_end|>\\n' }}\n    {%- endif %}\n{%- endif %}\n{%- set ns = namespace(multi_step_tool=true, last_query_index=messages|length - 1) %}\n{%- for message in messages[::-1] %}\n    {%- set index = (messages|length - 1) - loop.index0 %}\n    {%- if ns.multi_step_tool and message.role == \"user\" %}\n        {%- set content = render_content(message.content, false)|trim %}\n        {%- if not(content.startswith('<tool_response>') and content.endswith('</tool_response>')) %}\n            {%- set ns.multi_step_tool = false %}\n            {%- set ns.last_query_index = index %}\n        {%- endif %}\n    {%- endif %}\n{%- endfor %}\n{%- if ns.multi_step_tool %}\n    {{- raise_exception('No user query found in messages.') }}\n{%- endif %}\n{%- for message in messages %}\n    {%- set content = render_content(message.content, true)|trim %}\n    {%- if message.role == \"system\" %}\n        {%- if not loop.first %}\n            {{- raise_exception('System message must be at the beginning.') }}\n        {%- endif %}\n    {%- elif message.role == \"user\" %}\n        {{- '<|im_start|>' + message.role + '\\n' + content + '<|im_end|>' + '\\n' }}\n    {%- elif message.role == \"assistant\" %}\n        {%- set reasoning_content = '' %}\n        {%- if message.reasoning_content is string %}\n            {%- set reasoning_content = message.reasoning_content %}\n        {%- else %}\n            {%- if '</think>' in content %}\n                {%- set reasoning_content = content.split('</think>')[0].rstrip('\\n').split('<think>')[-1].lstrip('\\n') %}\n                {%- set content = content.split('</think>')[-1].lstrip('\\n') %}\n            {%- endif %}\n        {%- endif %}\n        {%- set reasoning_content = reasoning_content|trim %}\n        {%- if (preserve_thinking is defined and preserve_thinking is true) or (loop.index0 > ns.last_query_index) %}\n            {{- '<|im_start|>' + message.role + '\\n<think>\\n' + reasoning_content + '\\n</think>\\n\\n' + content }}\n        {%- else %}\n            {{- '<|im_start|>' + message.role + '\\n' + content }}\n        {%- endif %}\n        {%- if message.tool_calls and message.tool_calls is iterable and message.tool_calls is not mapping %}\n            {%- for tool_call in message.tool_calls %}\n                {%- if tool_call.function is defined %}\n                    {%- set tool_call = tool_call.function %}\n                {%- endif %}\n                {%- if loop.first %}\n                    {%- if content|trim %}\n                        {{- '\\n\\n<tool_call>\\n<function=' + tool_call.name + '>\\n' }}\n                    {%- else %}\n                        {{- '<tool_call>\\n<function=' + tool_call.name + '>\\n' }}\n                    {%- endif %}\n                {%- else %}\n                    {{- '\\n<tool_call>\\n<function=' + tool_call.name + '>\\n' }}\n                {%- endif %}\n                {%- if tool_call.arguments is defined %}\n                    {%- for args_name, args_value in tool_call.arguments|items %}\n                        {{- '<parameter=' + args_name + '>\\n' }}\n                        {%- set args_value = args_value | string if args_value is string else args_value | tojson | safe %}\n                        {{- args_value }}\n                        {{- '\\n</parameter>\\n' }}\n                    {%- endfor %}\n                {%- endif %}\n                {{- '</function>\\n</tool_call>' }}\n            {%- endfor %}\n        {%- endif %}\n        {{- '<|im_end|>\\n' }}\n    {%- elif message.role == \"tool\" %}\n        {%- if loop.previtem and loop.previtem.role != \"tool\" %}\n            {{- '<|im_start|>user' }}\n        {%- endif %}\n        {{- '\\n<tool_response>\\n' }}\n        {{- content }}\n        {{- '\\n</tool_response>' }}\n        {%- if not loop.last and loop.nextitem.role != \"tool\" %}\n            {{- '<|im_end|>\\n' }}\n        {%- elif loop.last %}\n            {{- '<|im_end|>\\n' }}\n        {%- endif %}\n    {%- else %}\n        {{- raise_exception('Unexpected message role.') }}\n    {%- endif %}\n{%- endfor %}\n{%- if add_generation_prompt %}\n    {{- '<|im_start|>assistant\\n' }}\n    {%- if enable_thinking is defined and enable_thinking is false %}\n        {{- '<think>\\n\\n</think>\\n\\n' }}\n    {%- else %}\n        {{- '<think>\\n' }}\n    {%- endif %}\n{%- endif %}",
+        "chat_template_caps": {
+          "supports_object_arguments": true,
+          "supports_parallel_tool_calls": true,
+          "supports_preserve_reasoning": true,
+          "supports_reasoning_effort": false,
+          "supports_string_content": true,
+          "supports_system_role": true,
+          "supports_tool_calls": true,
+          "supports_tools": true,
+          "supports_typed_content": false
+        },
+        "cors_proxy_enabled": false,
+        "default_generation_settings": {
+          "n_ctx": 4096,
+          "params": {
+            "adaptive_decay": 0.8999999761581421,
+            "adaptive_target": -1.0,
+            "backend_sampling": false,
+            "chat_format": "Content-only",
+            "dry_allowed_length": 2,
+            "dry_base": 1.75,
+            "dry_multiplier": 0.0,
+            "dry_penalty_last_n": 64,
+            "dynatemp_exponent": 1.0,
+            "dynatemp_range": 0.0,
+            "frequency_penalty": 0.0,
+            "generation_prompt": "",
+            "ignore_eos": false,
+            "lora": [],
+            "max_tokens": -1,
+            "min_keep": 0,
+            "min_p": 0.05000000074505806,
+            "mirostat": 0,
+            "mirostat_eta": 0.10000000149011612,
+            "mirostat_tau": 5.0,
+            "n_discard": 0,
+            "n_keep": 0,
+            "n_predict": -1,
+            "n_probs": 0,
+            "post_sampling_probs": false,
+            "presence_penalty": 0.0,
+            "reasoning_format": "none",
+            "reasoning_in_content": false,
+            "repeat_last_n": 64,
+            "repeat_penalty": 1.0,
+            "samplers": [
+              "penalties",
+              "dry",
+              "top_n_sigma",
+              "top_k",
+              "typ_p",
+              "top_p",
+              "min_p",
+              "xtc",
+              "temperature"
+            ],
+            "seed": 42,
+            "speculative.types": "none",
+            "stream": false,
+            "temperature": 0.0,
+            "timings_per_token": false,
+            "top_k": 20,
+            "top_n_sigma": -1.0,
+            "top_p": 0.949999988079071,
+            "typical_p": 1.0,
+            "xtc_probability": 0.0,
+            "xtc_threshold": 0.10000000149011612
+          }
+        },
+        "endpoint_metrics": false,
+        "endpoint_props": false,
+        "endpoint_slots": true,
+        "eos_token": "<|im_end|>",
+        "is_sleeping": false,
+        "media_marker": "<__media_uulnLJanx39PYzhXT4Xmk13mvJARQOvI__>",
+        "modalities": {
+          "audio": false,
+          "video": false,
+          "vision": false
+        },
+        "model_alias": "device-scheduler-qualification",
+        "model_ftype": "Q4_K - Medium",
+        "model_path": "/home/tumlinson/.local/share/core4/models/qwen3.6-35b-a3b-q4-k-m/671e47e0ec53c665d048b98c3ecbfd5236b5ca9c3e02ed19fc8f81f7b85140c7/model.gguf",
+        "total_slots": 1,
+        "ui": true,
+        "ui_settings": {}
+      },
+      "slots": [
+        {
+          "id": 0,
+          "id_task": 0,
+          "is_processing": false,
+          "n_ctx": 4096,
+          "n_prompt_tokens": 1123,
+          "n_prompt_tokens_cache": 0,
+          "n_prompt_tokens_processed": 0,
+          "next_token": [
+            {
+              "has_new_line": false,
+              "has_next_token": false,
+              "n_decoded": 0,
+              "n_remain": -1
+            }
+          ],
+          "params": {
+            "adaptive_decay": 0.8999999761581421,
+            "adaptive_target": -1.0,
+            "backend_sampling": false,
+            "chat_format": "Content-only",
+            "dry_allowed_length": 2,
+            "dry_base": 1.75,
+            "dry_multiplier": 0.0,
+            "dry_penalty_last_n": 64,
+            "dynatemp_exponent": 1.0,
+            "dynatemp_range": 0.0,
+            "frequency_penalty": 0.0,
+            "generation_prompt": "",
+            "ignore_eos": false,
+            "lora": [],
+            "max_tokens": 128,
+            "min_keep": 0,
+            "min_p": 0.05000000074505806,
+            "mirostat": 0,
+            "mirostat_eta": 0.10000000149011612,
+            "mirostat_tau": 5.0,
+            "n_discard": 0,
+            "n_keep": 0,
+            "n_predict": 128,
+            "n_probs": 0,
+            "post_sampling_probs": false,
+            "presence_penalty": 0.0,
+            "reasoning_format": "deepseek",
+            "reasoning_in_content": false,
+            "repeat_last_n": 64,
+            "repeat_penalty": 1.0,
+            "samplers": [
+              "penalties",
+              "dry",
+              "top_n_sigma",
+              "top_k",
+              "typ_p",
+              "top_p",
+              "min_p",
+              "xtc",
+              "temperature"
+            ],
+            "seed": 42,
+            "speculative.types": "none",
+            "stream": false,
+            "temperature": 0.0,
+            "timings_per_token": false,
+            "top_k": 20,
+            "top_n_sigma": -1.0,
+            "top_p": 0.949999988079071,
+            "typical_p": 1.0,
+            "xtc_probability": 0.0,
+            "xtc_threshold": 0.10000000149011612
+          },
+          "speculative": false
+        }
+      ]
+    },
+    "process_ids": [
+      290698
+    ],
+    "used_gpu_memory_bytes": 1054867456
+  },
+  "scheduler_gpu_resource": {
+    "attributes": {
+      "index_observation": 0,
+      "inventory_observed_at": "2026-10-21T18:45:57.560625+00:00",
+      "managed_process_ids": [],
+      "memory_enforcement": "accounting_only",
+      "memory_free_bytes_observation": 16929259520,
+      "name": "Tesla V100-SXM2-16GB",
+      "pci_bus_id": "00000000:02:00.0",
+      "process_count_observation": 0,
+      "process_identity_unknown_count": 0,
+      "process_mapping_state": "observed",
+      "process_observed_at": "2026-10-21T18:45:57.560625+00:00",
+      "process_telemetry": "compute-apps-visible",
+      "process_telemetry_state": "observed",
+      "processes_observation": [],
+      "unmanaged_process_count": 0,
+      "utilization_percent_observation": 0,
+      "uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8"
+    },
+    "capabilities": [
+      "nvidia-smi-compute-process-telemetry",
+      "shared-admission",
+      "whole-device-exclusive-admission",
+      "memory-accounting-only"
+    ],
+    "capacities": {
+      "memory_bytes": 17179869184.0
+    },
+    "conflict_domains": [
+      "gpu-exclusive:testlsserver:GPU-21131915-1488-23af-38dd-1743ae1f5cc8"
+    ],
+    "host_id": "testlsserver",
+    "kind": "gpu",
+    "resource_id": "gpu:testlsserver:GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+    "schema_version": 1,
+    "topology": {
+      "links": [],
+      "pci_bus_id": "00000000:02:00.0",
+      "topology_state": "partial"
+    }
+  },
+  "scheduler_gpu_resource_status": {
+    "availability_reason": null,
+    "available": true,
+    "external_lease": {
+      "adapter_id": "nvidia-smi",
+      "mode": "exclusive_gpu_quiescence",
+      "release_method": "repeatable_read_only_observation",
+      "required_allocation_mode": "exclusive",
+      "supported": true
+    },
+    "last_seen_at": "2026-10-21T18:45:57.563819+00:00",
+    "resource": {
+      "attributes": {
+        "index_observation": 0,
+        "inventory_observed_at": "2026-10-21T18:45:57.560625+00:00",
+        "managed_process_ids": [],
+        "memory_enforcement": "accounting_only",
+        "memory_free_bytes_observation": 16929259520,
+        "name": "Tesla V100-SXM2-16GB",
+        "pci_bus_id": "00000000:02:00.0",
+        "process_count_observation": 0,
+        "process_identity_unknown_count": 0,
+        "process_mapping_state": "observed",
+        "process_observed_at": "2026-10-21T18:45:57.560625+00:00",
+        "process_telemetry": "compute-apps-visible",
+        "process_telemetry_state": "observed",
+        "processes_observation": [],
+        "unmanaged_process_count": 0,
+        "utilization_percent_observation": 0,
+        "uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8"
+      },
+      "capabilities": [
+        "nvidia-smi-compute-process-telemetry",
+        "shared-admission",
+        "whole-device-exclusive-admission",
+        "memory-accounting-only"
+      ],
+      "capacities": {
+        "memory_bytes": 17179869184.0
+      },
+      "conflict_domains": [
+        "gpu-exclusive:testlsserver:GPU-21131915-1488-23af-38dd-1743ae1f5cc8"
+      ],
+      "host_id": "testlsserver",
+      "kind": "gpu",
+      "resource_id": "gpu:testlsserver:GPU-21131915-1488-23af-38dd-1743ae1f5cc8",
+      "schema_version": 1,
+      "topology": {
+        "links": [],
+        "pci_bus_id": "00000000:02:00.0",
+        "topology_state": "partial"
+      }
+    },
+    "source_adapter_id": "nvidia-smi"
+  },
+  "schema_version": 1,
+  "scope": "single-host-real-llama-frameshift-device-scheduler-handoff",
+  "source": {
+    "frameshift_source": "/home/tumlinson/FrameShift/src",
+    "llama_binary": "/home/tumlinson/Software/llama.cpp/build/bin/llama-server",
+    "model_path": "/home/tumlinson/.local/share/core4/models/qwen3.6-35b-a3b-q4-k-m/671e47e0ec53c665d048b98c3ecbfd5236b5ca9c3e02ed19fc8f81f7b85140c7/model.gguf",
+    "repository_root": "/home/tumlinson/device-scheduler"
+  },
+  "source_identity_after": {
+    "external_frameshift": {
+      "git_head": "659ce1e2e618d96f8f46f69dd67bdc8ff691ef5e",
+      "source_hashes": {
+        "frameshift/__init__.py": "3d9564a255a304cf1f7d9c812e01171a5f8f44db62ffed0197703467df311b17",
+        "frameshift/__main__.py": "36a7ea7241e00e34007a8b5e9d04cec24b20f1b5b2655dcf3ad28058d81e1cf3",
+        "frameshift/activities.py": "3b12f4033c0d8103a54b374bf2621ffab0a744e8444af9e30b480fe8f422b623",
+        "frameshift/backends/__init__.py": "cb0037a8881f5c1c598e11e7ed6888130649de4ccc457a1d0ecf5ef723eed1bc",
+        "frameshift/backends/llama.py": "90927ac6d71cec9b21b1cb97b9dc2705838a740d2b1dadeb8a8dab81e4130b2f",
+        "frameshift/backends/scripted.py": "d7d34964cc077ba9fbdd7d695a01c2bd5bbb34cecff25fb586b934a47500d584",
+        "frameshift/backends/tokens.py": "eb902d9a4bb89affa5c9de3c9dfa6dc02e91825b3c4c940225c9f246b3f05344",
+        "frameshift/capacity.py": "4dadc907bcce4463875f749377216ebd2494ac7b2155fe582a0df1dd2a24da07",
+        "frameshift/client.py": "31d6c2cdae51f264ba03eeeeeed9efaf13bcf16f9ac4229797435dfc7aceee4e",
+        "frameshift/consumers/__init__.py": "f7c57af4054e1005278a95d3f78dd8210b8004442073fb670a7ac164eb79bc61",
+        "frameshift/consumers/project_control.py": "da3095c5a3897b8d17133b52e0731490b4c02d7eb009217d061025a8fc440a87",
+        "frameshift/context.py": "5ae5bc2c364d23e0ed3473e5925402229818e108792227fd9f669902b4bb5e31",
+        "frameshift/engine.py": "2b883418c29facc5791d2cb0ed2f7fbe1e00136308176ea5d99d152d55b4275f",
+        "frameshift/models.py": "e9d0db9821a466d6ddb5e965634390eda39fa77617addf227ce196c0f678c8e6",
+        "frameshift/registry.py": "16be210465a2ee498f9a37c3c231729d825c6fa4aa57d385e7a4883a7087c9fb",
+        "frameshift/scheduler.py": "04ad6b4d239fcd729db38de37aa5250d08ecf8004404dea58bf1284e127ffa37",
+        "frameshift/service.py": "bb3a8a0febf6b064752e6adc6ed19f836dc7559eebff938bc3708ceab6030572",
+        "frameshift/store.py": "8e08f55b6aca26b04c44b8161884c4533fbaae3eaa679267109140d9f478d67f"
+      },
+      "source_root": "/home/tumlinson/FrameShift/src"
+    },
+    "llama_binary": {
+      "path": "/home/tumlinson/Software/llama.cpp/build/bin/llama-server",
+      "sha256": "b42facfb93d85e1a581862c872615834223dc479871701c0b797aeee1fa11e9d",
+      "size_bytes": 17920
+    },
+    "model_identity": {
+      "content_sha256": null,
+      "content_sha256_status": "not-computed-large-local-model",
+      "device": 64512,
+      "filename_digest_hint": "671e47e0ec53c665d048b98c3ecbfd5236b5ca9c3e02ed19fc8f81f7b85140c7",
+      "inode": 2679605,
+      "mtime_ns": 1791210789910364709,
+      "path": "/home/tumlinson/.local/share/core4/models/qwen3.6-35b-a3b-q4-k-m/671e47e0ec53c665d048b98c3ecbfd5236b5ca9c3e02ed19fc8f81f7b85140c7/model.gguf",
+      "size_bytes": 20419565568
+    },
+    "production_source_hashes": {
+      "packages/device-scheduler-adapters/src/device_scheduler_adapters/__init__.py": "346598ceb2f75802c3443e1cdc40e2b1a2c0c698d48ff911fb9752e1c68b8e6c",
+      "packages/device-scheduler-adapters/src/device_scheduler_adapters/backends.py": "c4eb910fccc1ff49a6f73135bdff44f310c51ac231e6119b33f05edaf41caec5",
+      "packages/device-scheduler-adapters/src/device_scheduler_adapters/frameshift.py": "6e39deb841279f4bb1cf76508504f49d6947483e932e688de59041e4e304fcaf",
+      "packages/device-scheduler-adapters/src/device_scheduler_adapters/host.py": "9fc1b41de1600ce8be4554cf548b130bb46fdba065445722dc234554070bab59",
+      "packages/device-scheduler-adapters/src/device_scheduler_adapters/nvidia.py": "962d03510a4badfbcb2e351b8b2090a7fb7da1a54600eecfe5de016c3fdadb11",
+      "packages/device-scheduler-adapters/src/device_scheduler_adapters/project_control.py": "e97dac72b929ecafaa0bca84b20a8f0617f4fdbf6bc3384f1d67b2f9aae1f51a",
+      "packages/device-scheduler-adapters/src/device_scheduler_adapters/sqlite.py": "cd252ed21a6684581110ca236885118d4606881288e3f047ffac3cf17009d5ae",
+      "packages/device-scheduler-adapters/src/device_scheduler_adapters/systemd.py": "6839cfd72665ea3e117afe07b48aca2d20b0362d59b72c80f25462c079238276",
+      "packages/device-scheduler-core/src/device_scheduler_core/__init__.py": "cb950df8163d657f2f2957e271215b7243b85c6c2f2d37e8ec04775d4c559b6b",
+      "packages/device-scheduler-core/src/device_scheduler_core/allocator.py": "57763fced20443e43542502b473e71b262af37207a976d02d8654d6651287908",
+      "packages/device-scheduler-core/src/device_scheduler_core/application.py": "06689e652bc482c153f61425dfc29c9a901c0e7ec6023709ae04acacde9c56d4",
+      "packages/device-scheduler-core/src/device_scheduler_core/errors.py": "7c08ed4539e93ed750e4cc28bb54f91e606c470ece14389677fb7c2e763515f5",
+      "packages/device-scheduler-core/src/device_scheduler_core/handoff.py": "467980a207a6e54312c43055b94a8d2d702699a4b454758839348df805e612b8",
+      "packages/device-scheduler-core/src/device_scheduler_core/models.py": "41c901f139ec2c0d58c4ecfa8d29274142eb4be7b17046cb746235f78d27fb2b",
+      "packages/device-scheduler-core/src/device_scheduler_core/observability.py": "e805c2895032317ffaf5418fd4c58408e2fd02bcf97f824c6724094de1cf0648",
+      "packages/device-scheduler-core/src/device_scheduler_core/policy.py": "0223fa740b94af3d0ad2c2d59a9371bc8f6336e02347f99130c6974b1ac824f9",
+      "packages/device-scheduler-core/src/device_scheduler_core/ports.py": "a4972b5e22c15eeed00c19755dd66af6e0088b4b62a98fe9bc66aaefcb2aa30f",
+      "packages/device-scheduler-core/src/device_scheduler_core/scheduling.py": "9b535f8d8a9a9244b7ec74ac63d8156a0152ed4acbf1f3da3986914259260ad6",
+      "packages/device-scheduler-core/src/device_scheduler_core/validation.py": "31494e8fa927d6e70ddf1066bae6ef2671b4ef5947488a5cd6dff686002746a7",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/__init__.py": "45e6175cd9a6bef2e1f31e5cf5e724d00cd832696983907abbe1b0410f0ab8ca",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/__main__.py": "935a1c1166b0c1ea35a82256345000bf2c73ded718d77773bc27a71ecce28f7d",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/auth.py": "d8b81643c34457d4936044c6e667a75063d3a09b9c3763899aec8820116272c0",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/cli.py": "8a9b64c1582aea72776a785925869c505b89d333939bdd8ebdac8d0aaf570d63",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/client.py": "fb5c3645ae67d525768b89c43915333646713ca2f3df4483d2e4976cc0c0b1c6",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/config.py": "893828b240d7ba7c1c8544a95d6396265624cd0d6dedd14c8d8fe2c4446413f2",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/kda_bridge.py": "44a19453479bb3854562b1f81067dc32fd8de7d0d28df83f1731a4bc303237f8",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/policies.py": "ca0704cf82c85d10a0ca5124bf0877c7a348bac06dc93474849df6e08ac84aca",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/registry.py": "202d875bd5f8cb2194646a03af709201c62b37f2092f6d82a8b21bfd5f565185",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/server.py": "182747613b6247c151795f77920f828daa1b77c613cfd5cd958f0826d884f6c2",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/service.py": "5f8bcb525bd4f935d1da366c9e0852accf98e8ad00a5596d716ab037c4530fee",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/stdio.py": "4234544ef84569636977de41999e8cbbb013c4994f35f91a59605a6a19e43616"
+    },
+    "qualification_source_hashes": {
+      "scripts/qualification_gpu_probe.py": "2fad1b27c047f4b0c882ef83b35185d76ec4b6bb1971a5e219ebf8212cb06b80",
+      "scripts/qualify_gpu_handoff.py": "c1dd6260c6a3532bc8098976672910b7c65faeae5c0ee08a02b7c83afde8c62a"
+    }
+  },
+  "source_identity_before": {
+    "external_frameshift": {
+      "git_head": "659ce1e2e618d96f8f46f69dd67bdc8ff691ef5e",
+      "source_hashes": {
+        "frameshift/__init__.py": "3d9564a255a304cf1f7d9c812e01171a5f8f44db62ffed0197703467df311b17",
+        "frameshift/__main__.py": "36a7ea7241e00e34007a8b5e9d04cec24b20f1b5b2655dcf3ad28058d81e1cf3",
+        "frameshift/activities.py": "3b12f4033c0d8103a54b374bf2621ffab0a744e8444af9e30b480fe8f422b623",
+        "frameshift/backends/__init__.py": "cb0037a8881f5c1c598e11e7ed6888130649de4ccc457a1d0ecf5ef723eed1bc",
+        "frameshift/backends/llama.py": "90927ac6d71cec9b21b1cb97b9dc2705838a740d2b1dadeb8a8dab81e4130b2f",
+        "frameshift/backends/scripted.py": "d7d34964cc077ba9fbdd7d695a01c2bd5bbb34cecff25fb586b934a47500d584",
+        "frameshift/backends/tokens.py": "eb902d9a4bb89affa5c9de3c9dfa6dc02e91825b3c4c940225c9f246b3f05344",
+        "frameshift/capacity.py": "4dadc907bcce4463875f749377216ebd2494ac7b2155fe582a0df1dd2a24da07",
+        "frameshift/client.py": "31d6c2cdae51f264ba03eeeeeed9efaf13bcf16f9ac4229797435dfc7aceee4e",
+        "frameshift/consumers/__init__.py": "f7c57af4054e1005278a95d3f78dd8210b8004442073fb670a7ac164eb79bc61",
+        "frameshift/consumers/project_control.py": "da3095c5a3897b8d17133b52e0731490b4c02d7eb009217d061025a8fc440a87",
+        "frameshift/context.py": "5ae5bc2c364d23e0ed3473e5925402229818e108792227fd9f669902b4bb5e31",
+        "frameshift/engine.py": "2b883418c29facc5791d2cb0ed2f7fbe1e00136308176ea5d99d152d55b4275f",
+        "frameshift/models.py": "e9d0db9821a466d6ddb5e965634390eda39fa77617addf227ce196c0f678c8e6",
+        "frameshift/registry.py": "16be210465a2ee498f9a37c3c231729d825c6fa4aa57d385e7a4883a7087c9fb",
+        "frameshift/scheduler.py": "04ad6b4d239fcd729db38de37aa5250d08ecf8004404dea58bf1284e127ffa37",
+        "frameshift/service.py": "bb3a8a0febf6b064752e6adc6ed19f836dc7559eebff938bc3708ceab6030572",
+        "frameshift/store.py": "8e08f55b6aca26b04c44b8161884c4533fbaae3eaa679267109140d9f478d67f"
+      },
+      "source_root": "/home/tumlinson/FrameShift/src"
+    },
+    "llama_binary": {
+      "path": "/home/tumlinson/Software/llama.cpp/build/bin/llama-server",
+      "sha256": "b42facfb93d85e1a581862c872615834223dc479871701c0b797aeee1fa11e9d",
+      "size_bytes": 17920
+    },
+    "model_identity": {
+      "content_sha256": null,
+      "content_sha256_status": "not-computed-large-local-model",
+      "device": 64512,
+      "filename_digest_hint": "671e47e0ec53c665d048b98c3ecbfd5236b5ca9c3e02ed19fc8f81f7b85140c7",
+      "inode": 2679605,
+      "mtime_ns": 1791210789910364709,
+      "path": "/home/tumlinson/.local/share/core4/models/qwen3.6-35b-a3b-q4-k-m/671e47e0ec53c665d048b98c3ecbfd5236b5ca9c3e02ed19fc8f81f7b85140c7/model.gguf",
+      "size_bytes": 20419565568
+    },
+    "production_source_hashes": {
+      "packages/device-scheduler-adapters/src/device_scheduler_adapters/__init__.py": "346598ceb2f75802c3443e1cdc40e2b1a2c0c698d48ff911fb9752e1c68b8e6c",
+      "packages/device-scheduler-adapters/src/device_scheduler_adapters/backends.py": "c4eb910fccc1ff49a6f73135bdff44f310c51ac231e6119b33f05edaf41caec5",
+      "packages/device-scheduler-adapters/src/device_scheduler_adapters/frameshift.py": "6e39deb841279f4bb1cf76508504f49d6947483e932e688de59041e4e304fcaf",
+      "packages/device-scheduler-adapters/src/device_scheduler_adapters/host.py": "9fc1b41de1600ce8be4554cf548b130bb46fdba065445722dc234554070bab59",
+      "packages/device-scheduler-adapters/src/device_scheduler_adapters/nvidia.py": "962d03510a4badfbcb2e351b8b2090a7fb7da1a54600eecfe5de016c3fdadb11",
+      "packages/device-scheduler-adapters/src/device_scheduler_adapters/project_control.py": "e97dac72b929ecafaa0bca84b20a8f0617f4fdbf6bc3384f1d67b2f9aae1f51a",
+      "packages/device-scheduler-adapters/src/device_scheduler_adapters/sqlite.py": "cd252ed21a6684581110ca236885118d4606881288e3f047ffac3cf17009d5ae",
+      "packages/device-scheduler-adapters/src/device_scheduler_adapters/systemd.py": "6839cfd72665ea3e117afe07b48aca2d20b0362d59b72c80f25462c079238276",
+      "packages/device-scheduler-core/src/device_scheduler_core/__init__.py": "cb950df8163d657f2f2957e271215b7243b85c6c2f2d37e8ec04775d4c559b6b",
+      "packages/device-scheduler-core/src/device_scheduler_core/allocator.py": "57763fced20443e43542502b473e71b262af37207a976d02d8654d6651287908",
+      "packages/device-scheduler-core/src/device_scheduler_core/application.py": "06689e652bc482c153f61425dfc29c9a901c0e7ec6023709ae04acacde9c56d4",
+      "packages/device-scheduler-core/src/device_scheduler_core/errors.py": "7c08ed4539e93ed750e4cc28bb54f91e606c470ece14389677fb7c2e763515f5",
+      "packages/device-scheduler-core/src/device_scheduler_core/handoff.py": "467980a207a6e54312c43055b94a8d2d702699a4b454758839348df805e612b8",
+      "packages/device-scheduler-core/src/device_scheduler_core/models.py": "41c901f139ec2c0d58c4ecfa8d29274142eb4be7b17046cb746235f78d27fb2b",
+      "packages/device-scheduler-core/src/device_scheduler_core/observability.py": "e805c2895032317ffaf5418fd4c58408e2fd02bcf97f824c6724094de1cf0648",
+      "packages/device-scheduler-core/src/device_scheduler_core/policy.py": "0223fa740b94af3d0ad2c2d59a9371bc8f6336e02347f99130c6974b1ac824f9",
+      "packages/device-scheduler-core/src/device_scheduler_core/ports.py": "a4972b5e22c15eeed00c19755dd66af6e0088b4b62a98fe9bc66aaefcb2aa30f",
+      "packages/device-scheduler-core/src/device_scheduler_core/scheduling.py": "9b535f8d8a9a9244b7ec74ac63d8156a0152ed4acbf1f3da3986914259260ad6",
+      "packages/device-scheduler-core/src/device_scheduler_core/validation.py": "31494e8fa927d6e70ddf1066bae6ef2671b4ef5947488a5cd6dff686002746a7",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/__init__.py": "45e6175cd9a6bef2e1f31e5cf5e724d00cd832696983907abbe1b0410f0ab8ca",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/__main__.py": "935a1c1166b0c1ea35a82256345000bf2c73ded718d77773bc27a71ecce28f7d",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/auth.py": "d8b81643c34457d4936044c6e667a75063d3a09b9c3763899aec8820116272c0",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/cli.py": "8a9b64c1582aea72776a785925869c505b89d333939bdd8ebdac8d0aaf570d63",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/client.py": "fb5c3645ae67d525768b89c43915333646713ca2f3df4483d2e4976cc0c0b1c6",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/config.py": "893828b240d7ba7c1c8544a95d6396265624cd0d6dedd14c8d8fe2c4446413f2",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/kda_bridge.py": "44a19453479bb3854562b1f81067dc32fd8de7d0d28df83f1731a4bc303237f8",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/policies.py": "ca0704cf82c85d10a0ca5124bf0877c7a348bac06dc93474849df6e08ac84aca",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/registry.py": "202d875bd5f8cb2194646a03af709201c62b37f2092f6d82a8b21bfd5f565185",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/server.py": "182747613b6247c151795f77920f828daa1b77c613cfd5cd958f0826d884f6c2",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/service.py": "5f8bcb525bd4f935d1da366c9e0852accf98e8ad00a5596d716ab037c4530fee",
+      "packages/device-scheduler-mcp/src/device_scheduler_mcp/stdio.py": "4234544ef84569636977de41999e8cbbb013c4994f35f91a59605a6a19e43616"
+    },
+    "qualification_source_hashes": {
+      "scripts/qualification_gpu_probe.py": "2fad1b27c047f4b0c882ef83b35185d76ec4b6bb1971a5e219ebf8212cb06b80",
+      "scripts/qualify_gpu_handoff.py": "c1dd6260c6a3532bc8098976672910b7c65faeae5c0ee08a02b7c83afde8c62a"
+    }
+  },
+  "status": "passed"
+}

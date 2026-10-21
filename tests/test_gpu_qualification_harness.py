@@ -28,6 +28,7 @@ from scripts.qualify_gpu_handoff import (
     _context_from_prompt,
     _encode_qualification_context,
     _frameshift_runtime,
+    _qualification_output_schema,
     _reconcile_backend_on_failure,
     _select_scheduler_gpu_resource,
     _wait_backend_ready,
@@ -484,12 +485,25 @@ def test_generated_configuration_is_private_loopback_and_uuid_pinned(tmp_path):
     execution = tomllib.loads((work / "profiles.toml").read_text(encoding="utf-8"))
     backend = tomllib.loads((work / "backend-profiles.toml").read_text(encoding="utf-8"))
     continuations = tomllib.loads((work / "continuations.toml").read_text(encoding="utf-8"))
+    profile_argv = execution["profiles"][EXECUTION_PROFILE_ID]["argv"]
+    schema_path = Path(profile_argv[profile_argv.index("--json-schema-file") + 1])
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
 
     assert config["server"]["host"] == "127.0.0.1"
     assert config["paths"]["state_directory"] == str(state_dir)
     assert execution["profiles"][EXECUTION_PROFILE_ID]["environment"]["CUDA_VISIBLE_DEVICES"] == GPU_UUID
-    assert execution["profiles"][EXECUTION_PROFILE_ID]["argv"][execution["profiles"][EXECUTION_PROFILE_ID]["argv"].index("--ctx-size") + 1] == "4096"
-    assert execution["profiles"][EXECUTION_PROFILE_ID]["argv"][-1] == "device-scheduler-qualification"
+    assert profile_argv[profile_argv.index("--ctx-size") + 1] == "4096"
+    assert profile_argv[profile_argv.index("--temp") + 1] == "0"
+    assert profile_argv[profile_argv.index("--seed") + 1] == "42"
+    assert profile_argv[-1] == "device-scheduler-qualification"
+    assert schema == _qualification_output_schema(GPU_UUID)
+    assert schema["oneOf"][0]["properties"]["arguments"]["properties"] == {
+        "operation": {"const": "allocate_read_free"},
+        "gpu_uuid": {"const": GPU_UUID},
+        "memory_bytes": {"const": 128 * 1024 * 1024},
+    }
+    assert schema["oneOf"][1]["properties"]["payload"]["properties"]["report"]["maxLength"] == 120
+    assert schema_path.stat().st_mode & 0o077 == 0
     assert backend["backend_profiles"][BACKEND_PROFILE_ID]["access_mode"] == "frameshift-only"
     assert backend["backend_profiles"][BACKEND_PROFILE_ID]["slots_url"].endswith("/slots")
     assert continuations["continuations"][CONTINUATION_REF]["frame_id"] == "qualification-frame"

@@ -1,0 +1,23 @@
+{
+  "frame_id": "e8f058ef-63ff-460d-8149-275f339c7ac6",
+  "frame_state": "cancelled",
+  "frame_cancellation": "FrameShift public SQLiteStore.cancel lifecycle API",
+  "execution_cleanup": {
+    "state": "unknown",
+    "reason": "unit was unloaded after systemd acknowledged stop",
+    "unit_name": "device-scheduler-attempt-c5fd7900761cdb554934c1e34124dc95.service",
+    "invocation_id": "141bf457ad5d487e9cb7c6f751c13f38",
+    "evidence": {
+      "adapter": "systemd-user-unit/v1",
+      "unit_description": "Device Scheduler attempt backend-restore-73af9d7ecd3cf55f7436c051944a6da6",
+      "invocation_id": "141bf457ad5d487e9cb7c6f751c13f38",
+      "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-c5fd7900761cdb554934c1e34124dc95.service",
+      "post_stop_unit_state": "not-found"
+    },
+    "operation_id": "qualification-fifth-run-cancelled-fixture-cleanup",
+    "stop_requested": true,
+    "cleanup_verified": true
+  },
+  "qualification_only": true,
+  "private_ledger_backend_state": "ready historical; physical backend stopped after fixture cancellation"
+}

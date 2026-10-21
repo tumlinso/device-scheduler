@@ -10,7 +10,7 @@ from pathlib import Path
 import httpx
 import pytest
 from device_scheduler_core.errors import PermissionDeniedError
-from device_scheduler_core.models import Principal
+from device_scheduler_core.models import HandoffSpec, Principal
 from device_scheduler_mcp.auth import StaticTokenStore, TokenGrant
 from device_scheduler_mcp.client import DeviceSchedulerClient, DeviceSchedulerClientError
 from device_scheduler_mcp.config import ServiceConfig
@@ -120,6 +120,69 @@ async def test_sdk_serializes_typed_specs_and_surfaces_permission_errors(tmp_pat
             await client.list_resources()
         assert error.value.code == "permission_denied"
         assert "test-agent" not in json.dumps(error.value.details)
+
+
+@pytest.mark.anyio
+async def test_handoff_submission_transport_preserves_one_typed_spec_envelope(tmp_path: Path) -> None:
+    class HandoffCaptureScheduler(FakeScheduler):
+        submitted_spec: HandoffSpec | None = None
+
+        def dispatch(self, operation, args, principal):
+            result = super().dispatch(operation, args, principal)
+            if operation == "handoffs.submit":
+                self.submitted_spec = HandoffSpec.from_dict(args["spec"])
+            return result
+
+    token_path = tmp_path / "client.token"
+    token = _private_token(token_path)
+    principal = Principal("submitter", actions=frozenset({"handoffs.submit"}))
+    scheduler = HandoffCaptureScheduler()
+    config = ServiceConfig(token_file=token_path, token_directory=tmp_path)
+    app = create_asgi_app(scheduler, _token_store(token, principal), config, background_ticks=False)
+    transport = httpx.ASGITransport(app=app)
+    client = DeviceSchedulerClient(
+        "http://127.0.0.1:8770",
+        token_path,
+        http_client_factory=lambda **kwargs: httpx.AsyncClient(transport=transport, **kwargs),
+    )
+    spec = HandoffSpec.from_dict({
+        "handoff_id": "transport-handoff",
+        "owner_id": "submitter",
+        "jobs": [{
+            "owner_id": "submitter",
+            "argv": ["python", "-c", "pass"],
+            "working_directory": "/tmp",
+        }],
+        "backend_ids": ["backend-a"],
+        "continuation_refs": [],
+        "eviction_grants": [{
+            "grant_id": "grant-a",
+            "backend_id": "backend-a",
+            "granted_by": "submitter",
+            "scope": "backend:backend-a",
+            "expires_at": "2030-01-01T00:00:00+00:00",
+        }],
+        "resource_envelope": [{
+            "kind": "gpu",
+            "quantities": {"memory_bytes": 1},
+        }],
+        "drain_timeout_seconds": 10,
+        "run_timeout_seconds": 10,
+        "restore_timeout_seconds": 10,
+    })
+
+    async with app.router.lifespan_context(app):
+        submitted = await client.call("handoffs.submit", {
+            "spec": spec.to_dict(),
+            "idempotency_key": "transport-handoff-request",
+        })
+
+    assert submitted["operation"] == "handoffs.submit"
+    assert scheduler.submitted_spec == spec
+    assert scheduler.calls[0][1] == {
+        "spec": spec.to_dict(),
+        "idempotency_key": "transport-handoff-request",
+    }
 
 
 @pytest.mark.anyio

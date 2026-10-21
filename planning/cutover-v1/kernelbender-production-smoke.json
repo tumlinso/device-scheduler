@@ -1,0 +1,109 @@
+{
+  "device_scheduler": {
+    "attempt_id": "fd8cb916-6ad8-4e5d-8170-010ca5914df8",
+    "cancel_requested": false,
+    "cleanup_verified": true,
+    "error": null,
+    "execution": {
+      "stderr_path": "/tmp/device-scheduler-production-smoke/kernelbender-result.stderr.txt",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_truncated": false,
+      "stdout_path": "/tmp/device-scheduler-production-smoke/kernelbender-result.stdout.txt",
+      "stdout_sha256": "22de9565c1a5f907fce3ef6953d7b486345950f2ef6183d6a2331bf34d717457",
+      "stdout_truncated": false
+    },
+    "job_id": "960b6f35-2a60-4e89-95bd-506c007f6ffd",
+    "logs": {
+      "attempt_id": "fd8cb916-6ad8-4e5d-8170-010ca5914df8",
+      "cleanup_verified": true,
+      "job_id": "960b6f35-2a60-4e89-95bd-506c007f6ffd",
+      "stderr": {
+        "omitted_lines": 0,
+        "original_bytes": 0,
+        "returned_bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "text": "",
+        "truncated": false
+      },
+      "stdout": {
+        "omitted_lines": 0,
+        "original_bytes": 239,
+        "returned_bytes": 239,
+        "sha256": "22de9565c1a5f907fce3ef6953d7b486345950f2ef6183d6a2331bf34d717457",
+        "text": "{\"gpu_uuid\": \"GPU-21131915-1488-23af-38dd-1743ae1f5cc8\", \"memory_bytes\": 33554432, \"performance_claim\": false, \"pid\": 325818, \"schema_version\": 1, \"status\": \"passed\", \"test\": \"finite-cuda-allocation-copy-free\", \"verified_bytes\": 33554432}\n",
+        "truncated": false
+      }
+    },
+    "owner_id": "kernelbender",
+    "result": {
+      "active_state": "active",
+      "adapter": "systemd-user-unit/v1",
+      "cleanup_verified": true,
+      "evidence": {
+        "adapter": "systemd-user-unit/v1",
+        "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-a77b584b706ff7199a85de358ab6b868.service",
+        "invocation_id": "aeab214f928c4ad2b5657489820e2f62",
+        "main_code": "1",
+        "unit_description": "Device Scheduler attempt fd8cb916-6ad8-4e5d-8170-010ca5914df8"
+      },
+      "exit_code": 0,
+      "invocation_id": "aeab214f928c4ad2b5657489820e2f62",
+      "logs": "{\"gpu_uuid\": \"GPU-21131915-1488-23af-38dd-1743ae1f5cc8\", \"memory_bytes\": 33554432, \"performance_claim\": false, \"pid\": 325818, \"schema_version\": 1, \"status\": \"passed\", \"test\": \"finite-cuda-allocation-copy-free\", \"verified_bytes\": 33554432}\n",
+      "logs_error": null,
+      "logs_truncated": false,
+      "result": "success",
+      "state": "succeeded",
+      "stdout": "{\"gpu_uuid\": \"GPU-21131915-1488-23af-38dd-1743ae1f5cc8\", \"memory_bytes\": 33554432, \"performance_claim\": false, \"pid\": 325818, \"schema_version\": 1, \"status\": \"passed\", \"test\": \"finite-cuda-allocation-copy-free\", \"verified_bytes\": 33554432}\n",
+      "substate": "exited",
+      "unit_name": "device-scheduler-attempt-a77b584b706ff7199a85de358ab6b868.service"
+    },
+    "scope_binding": {
+      "actions": [
+        "jobs.submit",
+        "jobs.read",
+        "jobs.control"
+      ],
+      "binding_source": "operator_configuration",
+      "execution_roots": [
+        "/home/tumlinson/KernelBender"
+      ],
+      "max_priority": 70,
+      "principal_id": "kernelbender",
+      "resource_requirements": [
+        {
+          "kind": "gpu",
+          "mode": "exclusive",
+          "quantities": {
+            "gpu_memory_bytes": 12884901888
+          },
+          "same_host": true,
+          "selectors": {
+            "uuid": "GPU-21131915-1488-23af-38dd-1743ae1f5cc8"
+          }
+        },
+        {
+          "kind": "cpu",
+          "mode": "shared",
+          "quantities": {
+            "cores": 2
+          },
+          "same_host": true
+        },
+        {
+          "kind": "memory",
+          "mode": "shared",
+          "quantities": {
+            "bytes": 2147483648
+          },
+          "same_host": true
+        }
+      ],
+      "scope_digest": "76663482bd1e1043f7d7e4c698d770dbce89b15d0de23b13a93585c010ec6148"
+    },
+    "state": "succeeded"
+  },
+  "exit_code": 0,
+  "request_id": "ds-cutover-kernelbender-5d0cc78a15b0497997d0ab89bd80e4f0",
+  "schema_version": 1,
+  "status": "ok"
+}

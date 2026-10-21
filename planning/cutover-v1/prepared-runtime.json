@@ -1,0 +1,10 @@
+{
+  "observed_at": "2026-10-21T18:31:14.529501+00:00",
+  "status": "prepared_inactive",
+  "candidate": "/home/tumlinson/.local/state/project-control/venvs/pc-sealed-ds13-final-a50b617-20261021",
+  "release_manifest_sha256": "8df5c0daed6ac049bd619be3da5019c29701988b875242b5f8e720a9f2dd04ff",
+  "skills_fingerprint": "b80a79e77da92da5086d02bdc5e968f8b6d1b52a1d1efc37156629e336967280",
+  "todo_wheel_sha256": "3f37c89fa2fb73612e2ecd88124b40c7e14f4f7d70580e1fa4bd5609357ad305",
+  "previous_current": "pc-sealed-0.4.2-0811a3a",
+  "permanent_preparation_backup": "/home/tumlinson/.local/state/device-scheduler/cutover-backups/prepared-20261021T183027Z"
+}

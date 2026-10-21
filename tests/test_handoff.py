@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+
+import pytest
 
 from device_scheduler_adapters.sqlite import Ledger
 from device_scheduler_core import (
@@ -41,13 +44,28 @@ class FakeBackend:
         self.calls = []
         self.restore_contexts = []
         self.baseline_calls = 0
+        self.inspect_state = "running"
+        self.inspect_calls = 0
 
     def inspect(self, backend):
+        self.inspect_calls += 1
+        epoch = 1 if self.admission_operation_id else 0
+        generation = {"state": "observed", "active_generations": self.active_generations}
+        admission = {
+            "state": "observed",
+            "admission_closed": self.admission_closed,
+            "admission_operation_id": self.admission_operation_id,
+            "admission_epoch": epoch,
+        }
         return {"active_generations": self.active_generations,
-                "state": "observed", "admission_closed": self.admission_closed,
+                "state": self.inspect_state, "generation_state": "observed",
+                "generation_observation": generation,
+                "admission_closed": self.admission_closed,
                 "admission_operation_id": self.admission_operation_id,
-                "admission_epoch": 1 if self.admission_operation_id else 0,
+                "admission_epoch": epoch,
                 "admission_state": "closed" if self.admission_closed else "open",
+                "admission_observation": admission,
+                "evidence": {"observed_at": self.clock().isoformat()},
                 "evicted": self.evicted}
 
     def drain(self, backend, *, operation_id, timeout_seconds):
@@ -55,7 +73,10 @@ class FakeBackend:
         self.admission_closed = True
         self.admission_operation_id = operation_id
         return {"state": "admission_closed", "admission_closed": True,
-                "operation_id": operation_id, "evidence": "fake-close"}
+                "operation_id": operation_id,
+                "close_receipt": {"closed": True, "backend_id": backend.backend_id,
+                                  "operation_id": operation_id, "epoch": 1},
+                "evidence": "fake-close"}
 
     def capture_reclamation_baseline(self, backend, *, operation_id):
         self.baseline_calls += 1
@@ -316,6 +337,57 @@ def test_each_persisted_phase_survives_coordinator_reconstruction(tmp_path):
     assert backend.calls.count("evict") == 1
     assert backend.calls.count("restore") == 1
     assert backend.baseline_calls == 1
+
+
+def _unknown_verify_drain_fixture(tmp_path, *, expiry=None):
+    clock, ledger, allocator, backend, continuations, jobs, spec, coordinator = make_fixture(tmp_path)
+    if expiry == "deadline":
+        spec = replace(spec, deadline=clock() + timedelta(seconds=5))
+    elif expiry == "grant":
+        grant = replace(spec.eviction_grants[0], expires_at=clock() + timedelta(seconds=5))
+        spec = replace(spec, eviction_grants=(grant,))
+    coordinator.submit(spec, "owner", "submit-1")
+    for _ in range(3):
+        coordinator.tick()
+    assert coordinator.get(spec.handoff_id)["phase"] == "verify_drain"
+    backend.inspect_state = "unknown"
+    unknown = coordinator.tick()["handoffs"][0]
+    assert unknown["state"] == "unknown"
+    assert unknown["phase"] == "verify_drain"
+    backend.inspect_state = "running"
+    return clock, backend, jobs, spec, coordinator
+
+
+def test_unknown_verify_drain_recovery_reconciles_only_fresh_complete_evidence(tmp_path):
+    _clock, backend, jobs, spec, coordinator = _unknown_verify_drain_fixture(tmp_path)
+    before_inspections = backend.inspect_calls
+    recovered = coordinator.recover(spec.handoff_id)
+
+    assert recovered["state"] == "draining"
+    assert recovered["phase"] == "verify_drain"
+    assert backend.inspect_calls == before_inspections + 1
+    assert "evict" not in backend.calls
+    assert jobs.submit_calls == 0
+
+    coordinator, completed = finish(coordinator, spec.handoff_id)
+    assert completed["state"] == "complete"
+    assert backend.calls.count("evict") == 1
+    assert jobs.submit_calls == 1
+
+
+@pytest.mark.parametrize("expiry", ("deadline", "grant"))
+def test_unknown_verify_drain_recovery_cancels_when_pre_eviction_authority_expires(tmp_path, expiry):
+    clock, backend, jobs, spec, coordinator = _unknown_verify_drain_fixture(tmp_path, expiry=expiry)
+    clock.advance(6)
+    recovered = coordinator.recover(spec.handoff_id)
+
+    assert recovered["state"] == "draining"
+    assert recovered["cancel_requested"] is True
+    assert "expired before backend eviction" in recovered["cancel_reason"]
+    coordinator, cancelled = finish(coordinator, spec.handoff_id)
+    assert cancelled["state"] == "cancelled"
+    assert backend.calls.count("evict") == 0
+    assert jobs.submit_calls == 0
 
 
 def test_drain_timeout_blocks_eviction_and_explicit_recovery_can_continue(tmp_path):

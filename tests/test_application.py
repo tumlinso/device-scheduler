@@ -382,6 +382,131 @@ def _job_args(cwd: Path, *, key: str = "job:key", **changes: Any) -> dict[str, A
     return {"spec": spec, "idempotency_key": key}
 
 
+def _scheduler_with_gpu_process_snapshot(
+    tmp_path: Path,
+    *,
+    backend_state: str,
+    backend_handle: Any,
+    process_rows: list[dict[str, Any]],
+    managed_process_ids: list[int],
+) -> tuple[Scheduler, FakeExecutor, Resource]:
+    resource = Resource(
+        "gpu:host:GPU-managed",
+        "host:local",
+        "gpu",
+        {"gpu_memory_bytes": 16 * 1024**2},
+        attributes={"uuid": "GPU-managed"},
+    )
+
+    class ProcessInventory:
+        api_version = "1"
+        adapter_id = "test.gpu-inventory"
+
+        def snapshot(self) -> Mapping[str, Any]:
+            return {
+                "state": "observed",
+                "observed_at": NOW.isoformat(),
+                "gpu_inventory": {"state": "observed"},
+                "process_telemetry": {"state": "observed", "processes": process_rows},
+                "resources": [resource],
+            }
+
+    executor = FakeExecutor()
+    observed_handles: list[ExecutionHandle] = []
+
+    def resolve_managed_processes(handles: list[ExecutionHandle]) -> Mapping[str, Any]:
+        observed_handles.extend(handles)
+        return {"state": "observed", "process_ids": managed_process_ids}
+
+    executor.managed_process_ids = resolve_managed_processes  # type: ignore[attr-defined]
+    scheduler = _scheduler(tmp_path, executor=executor, adapters=(ProcessInventory(),))
+    scheduler.ledger.put("backend", "backend:llama", {
+        "id": "backend:llama",
+        "backend_id": "backend:llama",
+        "owner": "agent:one",
+        "state": backend_state,
+        "execution_handle": backend_handle,
+    })
+    executor.observed_handles = observed_handles  # type: ignore[attr-defined]
+    return scheduler, executor, resource
+
+
+def _resource_from_listing(response: Mapping[str, Any], resource_id: str) -> Mapping[str, Any]:
+    for item in response["resources"]:
+        resource = item.get("resource", item)
+        if resource.get("resource_id") == resource_id:
+            return resource
+    raise AssertionError(f"resource {resource_id!r} missing from resource listing")
+
+
+def test_inventory_attributes_managed_backend_pids_and_keeps_unmanaged_pids(tmp_path: Path) -> None:
+    handle = ExecutionHandle(
+        adapter_id="systemd-user-unit",
+        external_id="device-scheduler-backend-llama.service",
+        identity="backend-invocation-1",
+        metadata={"invocation_id": "invocation-1", "control_group": "/user.slice/backend-llama.service"},
+    )
+    scheduler, executor, resource = _scheduler_with_gpu_process_snapshot(
+        tmp_path,
+        backend_state="ready",
+        backend_handle=handle.to_dict(),
+        process_rows=[
+            {"gpu_uuid": "GPU-managed", "pid": 4321, "identity_unknown": False},
+            {"gpu_uuid": "GPU-managed", "pid": 9876, "identity_unknown": False},
+        ],
+        managed_process_ids=[4321],
+    )
+
+    response = scheduler.dispatch("resources.list", {}, _principal("resources.list"))
+    observed = _resource_from_listing(response, resource.resource_id)
+    attributes = observed["attributes"]
+
+    assert executor.observed_handles == [handle]
+    assert attributes["process_mapping_state"] == "observed"
+    assert attributes["managed_process_ids"] == [4321]
+    assert attributes["unmanaged_process_count"] == 1
+
+
+@pytest.mark.parametrize(
+    ("backend_state", "backend_handle"),
+    [
+        ("starting", None),
+        ("unknown", {"adapter_id": "systemd-user-unit", "external_id": "backend.service", "identity": ""}),
+    ],
+    ids=("starting-without-handle", "unknown-with-invalid-handle"),
+)
+def test_active_backend_without_valid_handle_keeps_gpu_processes_unmanaged(
+    tmp_path: Path, backend_state: str, backend_handle: Any
+) -> None:
+    scheduler, executor, resource = _scheduler_with_gpu_process_snapshot(
+        tmp_path,
+        backend_state=backend_state,
+        backend_handle=backend_handle,
+        process_rows=[{"gpu_uuid": "GPU-managed", "pid": 4321, "identity_unknown": False}],
+        managed_process_ids=[4321],
+    )
+
+    response = scheduler.dispatch("resources.list", {}, _principal("resources.list"))
+    attributes = _resource_from_listing(response, resource.resource_id)["attributes"]
+
+    assert executor.observed_handles == []
+    assert attributes["process_mapping_state"] == "unknown"
+    assert attributes["managed_process_ids"] == []
+    assert attributes["unmanaged_process_count"] == 1
+
+
+def test_stopped_backend_without_handle_does_not_make_handle_inventory_incomplete(tmp_path: Path) -> None:
+    scheduler, _executor, _resource = _scheduler_with_gpu_process_snapshot(
+        tmp_path,
+        backend_state="stopped",
+        backend_handle=None,
+        process_rows=[],
+        managed_process_ids=[],
+    )
+
+    assert scheduler._active_execution_handles() == ([], True)
+
+
 def test_dispatch_submit_tick_and_collect_normal_job(tmp_path: Path) -> None:
     work = tmp_path / "work"
     work.mkdir()
@@ -1172,3 +1297,14 @@ def test_restart_safe_background_job_can_be_preempted_and_requeued(tmp_path: Pat
     preemption_ops = [item for item in scheduler.ledger.operations() if item["operation"] == "job.preempt"]
     assert len(preemption_ops) == 1
     assert preemption_ops[0]["status"] == "complete"
+
+
+def test_external_gpu_capability_advertises_budget_after_observed_headroom(tmp_path: Path) -> None:
+    adapter = ObservedGpuAdapter()
+    scheduler = _scheduler(tmp_path, adapters=(adapter,))
+    resource = Resource("gpu:test", "host:local", "gpu", {"memory_bytes": 8_000_000_000},
+                        attributes={"memory_free_bytes_observation": 7_000_000_000})
+    scheduler.allocator.reconcile_resource_inventory(adapter.adapter_id, [resource])
+    capability = scheduler._external_resource_lease_capability(resource.to_dict())
+    assert capability["admission_memory_bytes"] == 6_300_000_000
+    assert capability["required_allocation_mode"] == "exclusive"

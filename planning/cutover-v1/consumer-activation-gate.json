@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "legacy_admissions_fenced": true,
+  "legacy_active_or_unknown_allocations": 0,
+  "device_scheduler_healthy": true,
+  "device_scheduler_ready": true,
+  "gpu_qualification_passed": true,
+  "kda_and_kernelbender_idle": true,
+  "root_cutover_approved": true,
+  "evidence_refs": [
+    "planning/cutover-v1/legacy-fence-receipt.json",
+    "planning/qualification-v1/gpu-handoff-passed.json",
+    "planning/qualification-v1/gpu-allocations-passed.json",
+    "planning/cutover-v1/consumer-process-inspection.json"
+  ]
+}
