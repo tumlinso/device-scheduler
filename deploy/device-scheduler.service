@@ -1,0 +1,16 @@
+[Unit]
+Description=Device Scheduler MCP daemon
+After=default.target
+
+[Service]
+Type=simple
+UMask=0077
+Environment=PYTHONUNBUFFERED=1
+WorkingDirectory=%h/device-scheduler
+ExecStart=%h/device-scheduler/.venv/bin/device-scheduler --config %h/.config/device-scheduler/config.toml serve
+Restart=on-failure
+RestartSec=3
+KillMode=control-group
+
+[Install]
+WantedBy=default.target

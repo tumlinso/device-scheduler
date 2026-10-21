@@ -1,0 +1,6 @@
+{
+  "observed_at": "2026-10-21T17:21:13.711888+00:00",
+  "ledger": "/tmp/device-scheduler-gpu-allocation-42rb_j6t/scheduler/state/ledger.sqlite3",
+  "authoritative_execution_entities": [],
+  "operation_counts": {}
+}

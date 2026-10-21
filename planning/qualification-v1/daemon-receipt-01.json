@@ -1,0 +1,18 @@
+{
+  "checks": {
+    "health": true,
+    "mcp_auth_denied": true
+  },
+  "diagnostic_directory": "/tmp/device-scheduler-daemon-qualification-v1kitib3",
+  "error": {
+    "message": "could not complete the scheduler request",
+    "type": "DeviceSchedulerClientError"
+  },
+  "gpu_allocations_requested": false,
+  "limitations": [
+    "one cooperative finite CPU helper; not GPU or model qualification"
+  ],
+  "schema_version": 1,
+  "scope": "live-http-mcp-and-cpu-daemon-crash",
+  "verdict": "incomplete"
+}

@@ -8,3 +8,16 @@ Thumbs.db
 # Native Todo authority is local state; retain project.json as repository identity.
 .todo-orchestrator/*
 !.todo-orchestrator/project.json
+
+# Python development and local service state.
+.venv/
+.cache/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.coverage
+htmlcov/
+.device-scheduler/

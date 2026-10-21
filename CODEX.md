@@ -1,3 +1,3 @@
 # Codex guidance
 
-Follow the repository guidance in `AGENTS.md` and the current task's stated scope. Use Project Control's supported interfaces for workspace and Todo operations, preserve existing state, and keep setup work separate from later design and implementation.
+Follow `AGENTS.md`, the accepted contracts in `planning/`, the active task scope, and the user's product direction. Use registered Project Control context and supported workflow/Todo interfaces where applicable. Preserve existing state and evidence. Keep code, mocked adapter coverage, live service qualification, GPU/FrameShift end-to-end evidence, and CUDA-controller cutover claims distinct; use [qualification-v1](planning/qualification-v1/README.md) as the evidence record. For local development, install with `uv sync --group dev` and run `uv run pytest`. Report only checks and capabilities supported by actual evidence.

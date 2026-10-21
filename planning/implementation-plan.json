@@ -1,0 +1,2413 @@
+{
+  "format": "todo-orchestrator.plan",
+  "schema_version": 1,
+  "package_id": "device-scheduler-v1",
+  "project": {
+    "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+    "authority_id": "9b19daf8-d7c5-5e56-8b9f-df3630d94961"
+  },
+  "work_items": [
+    {
+      "id": "DS-00",
+      "title": "Design baseline and migration inventory",
+      "objective": "Finalize the accepted product specification, contracts, capability/evidence matrix, acceptance gates, and migration inventory before implementation work starts.",
+      "outcome": "A reviewed design baseline and native implementation breakdown identify current CUDA consumers, runtime source identities, and cutover constraints.",
+      "scope": {
+        "paths": [
+          {
+            "path": "planning/product-spec.md",
+            "access": "write"
+          },
+          {
+            "path": "planning/contracts.md",
+            "access": "write"
+          },
+          {
+            "path": "planning/capability-matrix.md",
+            "access": "write"
+          },
+          {
+            "path": "planning/acceptance.md",
+            "access": "write"
+          },
+          {
+            "path": "planning/implementation-plan.json",
+            "access": "write"
+          },
+          {
+            "path": "planning/README.md",
+            "access": "write"
+          },
+          {
+            "path": "scripts/verify_native_evidence.py",
+            "access": "write"
+          },
+          {
+            "path": "tests/test_native_evidence.py",
+            "access": "write"
+          }
+        ],
+        "concepts": [
+          "product-boundary",
+          "api-contract",
+          "consumer-inventory",
+          "runtime-source-identity"
+        ],
+        "locks": [
+          {
+            "name": "design-baseline",
+            "mode": "exclusive"
+          }
+        ]
+      },
+      "acceptance": {
+        "assertions": [
+          "The accepted product boundary and cross-system ownership are recorded",
+          "The explicit suspend-evict-run-restore-resume contract and failure behavior are recorded",
+          "The native plan lists DS-00 through DS-14 with dependencies",
+          "Live CUDA and Project Control resource consumers and runtime source identities are inventoried with evidence",
+          "Unimplemented and unqualified capabilities are labeled honestly"
+        ],
+        "required_evidence": [
+          "planning/product-spec.md",
+          "planning/contracts.md",
+          "planning/capability-matrix.md",
+          "planning/acceptance.md",
+          "planning/implementation-plan.json",
+          "consumer-inventory",
+          "runtime-source-identity-inventory"
+        ],
+        "allowed_dispositions": [
+          "completed"
+        ]
+      },
+      "ownership": {
+        "mode": "any",
+        "actors": []
+      },
+      "requirement_groups": [
+        {
+          "kind": "check",
+          "mode": "all",
+          "members": [
+            "DS-00-native-evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "DS-01",
+      "title": "Core domain and adapter contracts",
+      "objective": "Implement environment-neutral resource, lease, job, attempt, backend, handoff, policy, and adapter contracts with lifecycle validation.",
+      "outcome": "Versioned core contracts enforce lifecycle and capability invariants without environment or transport imports.",
+      "scope": {
+        "paths": [
+          {
+            "path": "packages/device-scheduler-core",
+            "access": "write"
+          },
+          {
+            "path": "scripts/verify_native_evidence.py",
+            "access": "read"
+          },
+          {
+            "path": "tests/test_contracts.py",
+            "access": "read"
+          },
+          {
+            "path": "tests/test_package_boundaries.py",
+            "access": "read"
+          },
+          {
+            "path": "planning/evidence/DS-01",
+            "access": "write"
+          },
+          {
+            "path": "pyproject.toml",
+            "access": "read"
+          },
+          {
+            "path": "uv.lock",
+            "access": "read"
+          }
+        ],
+        "concepts": [
+          "domain-model",
+          "lifecycle",
+          "adapter-ports",
+          "policy-contract"
+        ],
+        "locks": [
+          {
+            "name": "core-contracts",
+            "mode": "exclusive"
+          }
+        ]
+      },
+      "acceptance": {
+        "assertions": [
+          "Core contracts cover resources, requests, allocations, leases, jobs, attempts, schedules, events, managed backends, and handoffs",
+          "Transition validation rejects invalid lifecycle changes and stale fencing identities",
+          "Adapter capability declarations distinguish advisory, observational, and enforced behavior",
+          "Core imports no NVIDIA, CUDA, systemd, MCP, FrameShift, or Project Control implementation"
+        ],
+        "required_evidence": [
+          "core-contract-api",
+          "lifecycle-contract-tests",
+          "core-import-boundary-report"
+        ],
+        "allowed_dispositions": [
+          "completed"
+        ]
+      },
+      "ownership": {
+        "mode": "any",
+        "actors": []
+      },
+      "requirement_groups": [
+        {
+          "kind": "check",
+          "mode": "all",
+          "members": [
+            "DS-01-native-evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "DS-02",
+      "title": "Durable ledger and recovery journal",
+      "objective": "Implement transactional SQLite persistence, migrations, idempotency, operation history, outboxes, artifacts, backup, and recovery fencing.",
+      "outcome": "The service can durably record intent, reconcile external effects, and recover safely across daemon restart.",
+      "scope": {
+        "paths": [
+          {
+            "path": "packages/device-scheduler-adapters",
+            "access": "write"
+          },
+          {
+            "path": "packages/device-scheduler-core",
+            "access": "write"
+          },
+          {
+            "path": "scripts/verify_native_evidence.py",
+            "access": "read"
+          },
+          {
+            "path": "tests/test_application.py",
+            "access": "read"
+          },
+          {
+            "path": "planning/evidence/DS-02",
+            "access": "write"
+          },
+          {
+            "path": "pyproject.toml",
+            "access": "read"
+          },
+          {
+            "path": "uv.lock",
+            "access": "read"
+          }
+        ],
+        "concepts": [
+          "sqlite-ledger",
+          "migration",
+          "idempotency",
+          "operation-journal",
+          "outbox",
+          "recovery"
+        ],
+        "locks": [
+          {
+            "name": "ledger-schema",
+            "mode": "exclusive"
+          },
+          {
+            "name": "recovery-protocol",
+            "mode": "exclusive"
+          }
+        ]
+      },
+      "acceptance": {
+        "assertions": [
+          "Schema migrations are versioned and transactional with tested backup/restore",
+          "Same idempotency key and request returns the existing operation while changed content conflicts",
+          "External actions have durable intent and stable operation identities before execution",
+          "Unknown observations remain unresolved and cannot trigger blind replay",
+          "Artifacts are indexed separately with bounded output and explicit retention controls"
+        ],
+        "required_evidence": [
+          "migration-tests",
+          "idempotency-tests",
+          "crash-recovery-tests",
+          "backup-restore-evidence"
+        ],
+        "allowed_dispositions": [
+          "completed"
+        ]
+      },
+      "ownership": {
+        "mode": "any",
+        "actors": []
+      },
+      "requirement_groups": [
+        {
+          "kind": "check",
+          "mode": "all",
+          "members": [
+            "DS-02-native-evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "DS-03",
+      "title": "Allocation coordinator and policies",
+      "objective": "Implement atomic resource bundles, topology/conflict constraints, shared and exclusive allocation, round-trip reservation, fairness, aging, and safe preemption validation.",
+      "outcome": "Scheduling decisions are explainable policy proposals that the core validates before granting or reclaiming resources.",
+      "scope": {
+        "paths": [
+          {
+            "path": "packages/device-scheduler-core",
+            "access": "write"
+          },
+          {
+            "path": "packages/device-scheduler-adapters",
+            "access": "read"
+          },
+          {
+            "path": "scripts/verify_native_evidence.py",
+            "access": "read"
+          },
+          {
+            "path": "tests/test_scheduling.py",
+            "access": "read"
+          },
+          {
+            "path": "tests/test_handoff.py",
+            "access": "read"
+          },
+          {
+            "path": "planning/evidence/DS-03",
+            "access": "write"
+          },
+          {
+            "path": "pyproject.toml",
+            "access": "read"
+          },
+          {
+            "path": "uv.lock",
+            "access": "read"
+          }
+        ],
+        "concepts": [
+          "allocation",
+          "placement",
+          "fairness",
+          "preemption",
+          "handoff-reservation"
+        ],
+        "locks": [
+          {
+            "name": "allocation-state-machine",
+            "mode": "exclusive"
+          },
+          {
+            "name": "policy-contract",
+            "mode": "exclusive"
+          }
+        ]
+      },
+      "acceptance": {
+        "assertions": [
+          "Multi-resource bundles are atomically granted in the ledger",
+          "Compatible shared GPU allocations are default and explicit whole-device exclusivity is enforced",
+          "Missing/stale required estimates block admission with an explanation",
+          "Default policy provides interactive preference, weighted fairness, aging, large-request starvation protection, and compatible background filling",
+          "Policy cannot exceed authority, capacity, interruption, or reclamation invariants",
+          "Accepted handoffs protect required execution and restoration capacity"
+        ],
+        "required_evidence": [
+          "concurrent-allocation-tests",
+          "policy-invariant-tests",
+          "policy-explanation-samples",
+          "handoff-reservation-tests"
+        ],
+        "allowed_dispositions": [
+          "completed"
+        ]
+      },
+      "ownership": {
+        "mode": "any",
+        "actors": []
+      },
+      "requirement_groups": [
+        {
+          "kind": "check",
+          "mode": "all",
+          "members": [
+            "DS-03-native-evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "DS-04",
+      "title": "Linux process supervision",
+      "objective": "Implement transient systemd user service execution with stable attempt identity, supported cgroup limits, logging, cancellation, cleanup, and daemon restart reconciliation.",
+      "outcome": "Processes are supervised and reconciled by durable attempt identity without blind relaunch.",
+      "scope": {
+        "paths": [
+          {
+            "path": "packages/device-scheduler-adapters",
+            "access": "write"
+          },
+          {
+            "path": "scripts/verify_native_evidence.py",
+            "access": "read"
+          },
+          {
+            "path": "tests/test_systemd.py",
+            "access": "read"
+          },
+          {
+            "path": "packages/device-scheduler-core",
+            "access": "read"
+          },
+          {
+            "path": "planning/evidence/DS-04",
+            "access": "write"
+          },
+          {
+            "path": "pyproject.toml",
+            "access": "read"
+          },
+          {
+            "path": "uv.lock",
+            "access": "read"
+          }
+        ],
+        "concepts": [
+          "systemd-user-unit",
+          "process-tree",
+          "cgroup",
+          "attempt-reconciliation"
+        ],
+        "locks": [
+          {
+            "name": "linux-execution-adapter",
+            "mode": "exclusive"
+          }
+        ]
+      },
+      "acceptance": {
+        "assertions": [
+          "Each attempt maps to a deterministic transient user unit and argument-vector invocation",
+          "Supported CPU, memory, and task controls are capability-reported and qualified",
+          "Cancellation and terminal cleanup account for the full contained process tree",
+          "A daemon restart can inspect running/completed attempts through stable unit identity",
+          "Ambiguous or missing records remain unknown instead of relaunching work"
+        ],
+        "required_evidence": [
+          "systemd-authorization-qualification",
+          "cgroup-control-qualification",
+          "restart-reconciliation-tests",
+          "process-tree-cleanup-evidence"
+        ],
+        "allowed_dispositions": [
+          "completed"
+        ]
+      },
+      "ownership": {
+        "mode": "any",
+        "actors": []
+      },
+      "requirement_groups": [
+        {
+          "kind": "check",
+          "mode": "all",
+          "members": [
+            "DS-04-native-evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "DS-05",
+      "title": "NVIDIA resource discovery and admission",
+      "objective": "Implement GPU inventory, topology, memory/headroom estimates, opportunistic concurrency, whole-device exclusivity, quiescence, and profiling conflict domains.",
+      "outcome": "NVIDIA resources expose explicit capabilities and policy inputs while accounting limits are distinguished from enforced controls.",
+      "scope": {
+        "paths": [
+          {
+            "path": "packages/device-scheduler-adapters",
+            "access": "write"
+          },
+          {
+            "path": "scripts/verify_native_evidence.py",
+            "access": "read"
+          },
+          {
+            "path": "tests/test_nvidia.py",
+            "access": "read"
+          },
+          {
+            "path": "packages/device-scheduler-core",
+            "access": "read"
+          },
+          {
+            "path": "planning/evidence/DS-05",
+            "access": "write"
+          },
+          {
+            "path": "pyproject.toml",
+            "access": "read"
+          },
+          {
+            "path": "uv.lock",
+            "access": "read"
+          }
+        ],
+        "concepts": [
+          "nvidia-inventory",
+          "topology",
+          "gpu-sharing",
+          "gpu-exclusivity",
+          "profiling-isolation"
+        ],
+        "locks": [
+          {
+            "name": "nvidia-adapter",
+            "mode": "exclusive"
+          },
+          {
+            "name": "gpu-capability-model",
+            "mode": "exclusive"
+          }
+        ]
+      },
+      "acceptance": {
+        "assertions": [
+          "Inventory and topology are host-qualified and refreshable",
+          "GPU concurrency is allowed for compatible requests by default",
+          "Explicit exclusivity blocks conflicting admissions until verified reclamation",
+          "Memory budgets are never represented as hardware enforcement without evidence",
+          "Profiling and quiescence requirements are represented as named shared conflict domains",
+          "Real qualification uses an isolated resource pool"
+        ],
+        "required_evidence": [
+          "gpu-inventory-fixtures",
+          "gpu-admission-tests",
+          "topology-tests",
+          "isolated-gpu-qualification",
+          "exclusivity-reclamation-receipts"
+        ],
+        "allowed_dispositions": [
+          "completed"
+        ]
+      },
+      "ownership": {
+        "mode": "any",
+        "actors": []
+      },
+      "requirement_groups": [
+        {
+          "kind": "check",
+          "mode": "all",
+          "members": [
+            "DS-05-native-evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "DS-06",
+      "title": "Managed backend lifecycle adapter",
+      "objective": "Implement registered managed-service profiles and llama.cpp launch, readiness, drain, eviction, restoration, and model residency accounting.",
+      "outcome": "Backends can be operated by pinned configuration through journaled lifecycle actions with verifiable readiness and reclamation.",
+      "scope": {
+        "paths": [
+          {
+            "path": "packages/device-scheduler-adapters",
+            "access": "write"
+          },
+          {
+            "path": "scripts/verify_native_evidence.py",
+            "access": "read"
+          },
+          {
+            "path": "tests/test_backends.py",
+            "access": "read"
+          },
+          {
+            "path": "packages/device-scheduler-core",
+            "access": "read"
+          },
+          {
+            "path": "planning/evidence/DS-06",
+            "access": "write"
+          },
+          {
+            "path": "pyproject.toml",
+            "access": "read"
+          },
+          {
+            "path": "uv.lock",
+            "access": "read"
+          }
+        ],
+        "concepts": [
+          "managed-backend",
+          "llama-cpp",
+          "drain",
+          "weight-residency",
+          "restore"
+        ],
+        "locks": [
+          {
+            "name": "backend-lifecycle",
+            "mode": "exclusive"
+          }
+        ]
+      },
+      "acceptance": {
+        "assertions": [
+          "Backend identity pins launch configuration and version",
+          "Backend admission can close and attached consumers can be durably drained at a safe boundary",
+          "Stop/unload is issued only under an authorized explicit handoff",
+          "Resource reclamation and restored readiness are verified through adapter observations",
+          "Ordinary suspension leaves model weights resident unless a handoff explicitly authorizes eviction"
+        ],
+        "required_evidence": [
+          "backend-lifecycle-tests",
+          "llama-cpp-readiness-evidence",
+          "weight-reclamation-evidence",
+          "pinned-restore-evidence"
+        ],
+        "allowed_dispositions": [
+          "completed"
+        ]
+      },
+      "ownership": {
+        "mode": "any",
+        "actors": []
+      },
+      "requirement_groups": [
+        {
+          "kind": "check",
+          "mode": "all",
+          "members": [
+            "DS-06-native-evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "DS-07",
+      "title": "Durable handoff coordinator",
+      "objective": "Implement bounded request-suspend-evict-run-restore-resume orchestration, protected reservation, cancellation, failures, and phase recovery.",
+      "outcome": "An accepted finite handoff is durable across client and daemon disconnects and settles only after execution, restoration, and delivery obligations are reconciled.",
+      "scope": {
+        "paths": [
+          {
+            "path": "packages/device-scheduler-core",
+            "access": "write"
+          },
+          {
+            "path": "packages/device-scheduler-adapters",
+            "access": "write"
+          },
+          {
+            "path": "scripts/verify_native_evidence.py",
+            "access": "read"
+          },
+          {
+            "path": "tests/test_handoff.py",
+            "access": "read"
+          },
+          {
+            "path": "tests/test_backends.py",
+            "access": "read"
+          },
+          {
+            "path": "planning/evidence/DS-07",
+            "access": "write"
+          },
+          {
+            "path": "pyproject.toml",
+            "access": "read"
+          },
+          {
+            "path": "uv.lock",
+            "access": "read"
+          }
+        ],
+        "concepts": [
+          "handoff-state-machine",
+          "round-trip-reservation",
+          "result-delivery",
+          "recovery"
+        ],
+        "locks": [
+          {
+            "name": "handoff-state-machine",
+            "mode": "exclusive"
+          },
+          {
+            "name": "backend-lifecycle",
+            "mode": "exclusive"
+          }
+        ]
+      },
+      "acceptance": {
+        "assertions": [
+          "Handoff requires an explicit grant and fixed finite batch before acceptance",
+          "Protected reservation is feasible before stopping admissions or requesting drain",
+          "Drain timeout prevents eviction",
+          "Every phase persists intent before side effect and reconciles by stable operation identity",
+          "Results persist before delivery; failures preserve completed outputs",
+          "Restoration failure is visible and recoverable without rerunning completed jobs",
+          "Conflicting handoffs serialize and accepted batches cannot be extended"
+        ],
+        "required_evidence": [
+          "phase-transition-tests",
+          "failure-injection-matrix",
+          "result-delivery-deduplication",
+          "restoration-recovery-tests"
+        ],
+        "allowed_dispositions": [
+          "completed"
+        ]
+      },
+      "ownership": {
+        "mode": "any",
+        "actors": []
+      },
+      "requirement_groups": [
+        {
+          "kind": "check",
+          "mode": "all",
+          "members": [
+            "DS-07-native-evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "DS-08",
+      "title": "FrameShift continuation integration",
+      "objective": "Add a minimal adapter for durable submission, safe-suspend acknowledgements, idempotent result delivery, and resumption at the pending logical tool boundary.",
+      "outcome": "FrameShift continuations remain authoritative in FrameShift and receive durable handoff results after backend readiness.",
+      "scope": {
+        "paths": [
+          {
+            "path": "packages/device-scheduler-adapters",
+            "access": "write"
+          },
+          {
+            "path": "planning",
+            "access": "write"
+          },
+          {
+            "path": "scripts/verify_native_evidence.py",
+            "access": "read"
+          },
+          {
+            "path": "tests/test_frameshift_integration.py",
+            "access": "read"
+          },
+          {
+            "path": "tests/test_frameshift_restart_qualification.py",
+            "access": "read"
+          },
+          {
+            "path": "packages/device-scheduler-core",
+            "access": "read"
+          },
+          {
+            "path": "pyproject.toml",
+            "access": "read"
+          },
+          {
+            "path": "uv.lock",
+            "access": "read"
+          }
+        ],
+        "concepts": [
+          "frameshift-continuation",
+          "safe-boundary",
+          "tool-result-delivery"
+        ],
+        "locks": [
+          {
+            "name": "continuation-adapter-contract",
+            "mode": "exclusive"
+          }
+        ]
+      },
+      "acceptance": {
+        "assertions": [
+          "Adapter exchanges continuation references without duplicating FrameShift internal frame representation",
+          "Shared backend consumers attach under an explicit standing drain contract",
+          "Suspension acknowledgements identify durable continuation and safe boundary",
+          "Result delivery is idempotent and resumes the pending tool boundary only after required backend readiness",
+          "Ordinary suspension does not unload model weights"
+        ],
+        "required_evidence": [
+          "frameshift-contract-review",
+          "continuation-adapter-tests",
+          "duplicate-delivery-tests",
+          "agent-tool-boundary-e2e"
+        ],
+        "allowed_dispositions": [
+          "completed"
+        ]
+      },
+      "ownership": {
+        "mode": "any",
+        "actors": []
+      },
+      "requirement_groups": [
+        {
+          "kind": "check",
+          "mode": "all",
+          "members": [
+            "DS-08-native-evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "DS-09",
+      "title": "Authenticated MCP, SDK, and CLI",
+      "objective": "Expose versioned service operations through authenticated loopback HTTP MCP, a thin stdio bridge, typed Python SDK, and CLI.",
+      "outcome": "All public surfaces share the daemon's authorization and application behavior.",
+      "scope": {
+        "paths": [
+          {
+            "path": "packages/device-scheduler-mcp",
+            "access": "write"
+          },
+          {
+            "path": "packages/device-scheduler-core",
+            "access": "write"
+          },
+          {
+            "path": "scripts/verify_native_evidence.py",
+            "access": "read"
+          },
+          {
+            "path": "tests/test_api.py",
+            "access": "read"
+          },
+          {
+            "path": "tests/test_auth.py",
+            "access": "read"
+          },
+          {
+            "path": "tests/test_client.py",
+            "access": "read"
+          },
+          {
+            "path": "tests/test_cli.py",
+            "access": "read"
+          },
+          {
+            "path": "packages/device-scheduler-adapters",
+            "access": "read"
+          },
+          {
+            "path": "planning/evidence/DS-09",
+            "access": "write"
+          },
+          {
+            "path": "pyproject.toml",
+            "access": "read"
+          },
+          {
+            "path": "uv.lock",
+            "access": "read"
+          }
+        ],
+        "concepts": [
+          "mcp-http",
+          "stdio-bridge",
+          "python-sdk",
+          "cli",
+          "auth-scopes"
+        ],
+        "locks": [
+          {
+            "name": "public-api-contract",
+            "mode": "exclusive"
+          }
+        ]
+      },
+      "acceptance": {
+        "assertions": [
+          "Resource, lease, job, handoff, schedule, event, explanation, simulation, and health operations are discoverable",
+          "HTTP and stdio clients authenticate to one daemon authority",
+          "SDK, CLI, and MCP enforce the same scoped grants and idempotency behavior",
+          "Long operations return durable IDs and bounded waits do not cancel work",
+          "Command requests use argv, approved profiles/scopes, and host-managed secret references"
+        ],
+        "required_evidence": [
+          "api-schema",
+          "transport-contract-tests",
+          "authorization-matrix-tests",
+          "sdk-cli-parity-tests"
+        ],
+        "allowed_dispositions": [
+          "completed"
+        ]
+      },
+      "ownership": {
+        "mode": "any",
+        "actors": []
+      },
+      "requirement_groups": [
+        {
+          "kind": "check",
+          "mode": "all",
+          "members": [
+            "DS-09-native-evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "DS-10",
+      "title": "Durable schedules, dependencies, and events",
+      "objective": "Implement delayed and recurring schedules, nominal occurrence identity, overlap/misfire semantics, job-result dependencies, and authenticated events.",
+      "outcome": "Scheduled and conditional work survives restart and produces deduplicated jobs under explicit calendar and overlap rules.",
+      "scope": {
+        "paths": [
+          {
+            "path": "packages/device-scheduler-core",
+            "access": "write"
+          },
+          {
+            "path": "packages/device-scheduler-adapters",
+            "access": "write"
+          },
+          {
+            "path": "packages/device-scheduler-mcp",
+            "access": "write"
+          },
+          {
+            "path": "scripts/verify_native_evidence.py",
+            "access": "read"
+          },
+          {
+            "path": "tests/test_scheduling.py",
+            "access": "read"
+          },
+          {
+            "path": "tests/test_application.py",
+            "access": "read"
+          },
+          {
+            "path": "planning/evidence/DS-10",
+            "access": "write"
+          },
+          {
+            "path": "pyproject.toml",
+            "access": "read"
+          },
+          {
+            "path": "uv.lock",
+            "access": "read"
+          }
+        ],
+        "concepts": [
+          "interval-schedule",
+          "calendar-schedule",
+          "event-trigger",
+          "job-dependency"
+        ],
+        "locks": [
+          {
+            "name": "schedule-semantics",
+            "mode": "exclusive"
+          }
+        ]
+      },
+      "acceptance": {
+        "assertions": [
+          "Intervals and IANA timezone calendar occurrences have durable nominal identities",
+          "Default misfire behavior coalesces to one pending run and default overlap is prevented",
+          "Alternative overlap/misfire modes are explicit and supported",
+          "Dependency cycles are rejected and dependency state refers to job results",
+          "Authenticated events are issuer-scoped and duplicate identities do not duplicate work"
+        ],
+        "required_evidence": [
+          "schedule-boundary-tests",
+          "timezone-dst-tests",
+          "misfire-overlap-tests",
+          "dependency-cycle-tests",
+          "event-deduplication-tests"
+        ],
+        "allowed_dispositions": [
+          "completed"
+        ]
+      },
+      "ownership": {
+        "mode": "any",
+        "actors": []
+      },
+      "requirement_groups": [
+        {
+          "kind": "check",
+          "mode": "all",
+          "members": [
+            "DS-10-native-evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "DS-11",
+      "title": "Explanations, evidence, and policy replay",
+      "objective": "Implement inspection of queues, leases, ownership, operation histories, bounded artifacts, policy decisions, and side-effect-free replay.",
+      "outcome": "Users can explain resource decisions and reconstruct operations without confusing simulations with execution evidence.",
+      "scope": {
+        "paths": [
+          {
+            "path": "packages/device-scheduler-core",
+            "access": "write"
+          },
+          {
+            "path": "packages/device-scheduler-adapters",
+            "access": "write"
+          },
+          {
+            "path": "packages/device-scheduler-mcp",
+            "access": "write"
+          },
+          {
+            "path": "scripts/verify_native_evidence.py",
+            "access": "read"
+          },
+          {
+            "path": "tests/test_observability.py",
+            "access": "read"
+          },
+          {
+            "path": "planning/evidence/DS-11",
+            "access": "write"
+          },
+          {
+            "path": "pyproject.toml",
+            "access": "read"
+          },
+          {
+            "path": "uv.lock",
+            "access": "read"
+          }
+        ],
+        "concepts": [
+          "decision-explanation",
+          "execution-evidence",
+          "artifact-index",
+          "policy-replay",
+          "health"
+        ],
+        "locks": [
+          {
+            "name": "evidence-contract",
+            "mode": "exclusive"
+          }
+        ]
+      },
+      "acceptance": {
+        "assertions": [
+          "Decision views include policy version, reason, observation freshness, and relevant ownership",
+          "Execution evidence distinguishes ledger state, adapter observation, and enforced capability",
+          "Output bounds and truncation are explicit; destructive retention is policy-controlled",
+          "Replay performs no allocation, process, backend, or artifact side effects",
+          "Health reports unresolved and unavailable capacity honestly"
+        ],
+        "required_evidence": [
+          "explanation-contract-tests",
+          "artifact-bound-tests",
+          "replay-no-side-effect-tests",
+          "health-reconciliation-tests"
+        ],
+        "allowed_dispositions": [
+          "completed"
+        ]
+      },
+      "ownership": {
+        "mode": "any",
+        "actors": []
+      },
+      "requirement_groups": [
+        {
+          "kind": "check",
+          "mode": "all",
+          "members": [
+            "DS-11-native-evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "DS-12",
+      "title": "Integrated qualification",
+      "objective": "Pass independent lifecycle, crash, transport, concurrency, FrameShift handoff, security, and real GPU acceptance gates on an isolated resource pool.",
+      "outcome": "First-release behavior and evidence limitations are independently reviewed and accepted before cutover.",
+      "scope": {
+        "paths": [
+          {
+            "path": "planning/acceptance.md",
+            "access": "write"
+          },
+          {
+            "path": "planning/capability-matrix.md",
+            "access": "write"
+          },
+          {
+            "path": "packages",
+            "access": "write"
+          },
+          {
+            "path": "scripts/verify_native_evidence.py",
+            "access": "read"
+          },
+          {
+            "path": "tests/test_integration_qualification.py",
+            "access": "read"
+          },
+          {
+            "path": "tests/test_handoff.py",
+            "access": "read"
+          },
+          {
+            "path": "tests/test_frameshift_restart_qualification.py",
+            "access": "read"
+          },
+          {
+            "path": "planning/evidence/DS-12",
+            "access": "write"
+          },
+          {
+            "path": "pyproject.toml",
+            "access": "read"
+          },
+          {
+            "path": "uv.lock",
+            "access": "read"
+          }
+        ],
+        "concepts": [
+          "integrated-qualification",
+          "gpu-e2e",
+          "failure-injection",
+          "security-review"
+        ],
+        "locks": [
+          {
+            "name": "qualification-pool",
+            "mode": "exclusive"
+          },
+          {
+            "name": "release-gate",
+            "mode": "exclusive"
+          }
+        ]
+      },
+      "acceptance": {
+        "assertions": [
+          "All applicable acceptance cases have reproducible evidence and explicit disposition",
+          "Real GPU journey proves ordinary suspension keeps weights resident and explicit handoff reclaims then restores them",
+          "Crash/failure injection covers every durable handoff phase",
+          "Independent review confirms authorization, truthful capability claims, and no blind replay",
+          "Capability matrix reflects actual evidence and unresolved limitations"
+        ],
+        "required_evidence": [
+          "qualification-report",
+          "gpu-handoff-e2e-receipt",
+          "crash-injection-results",
+          "independent-review-record",
+          "updated-capability-matrix"
+        ],
+        "allowed_dispositions": [
+          "completed"
+        ]
+      },
+      "ownership": {
+        "mode": "any",
+        "actors": []
+      },
+      "requirement_groups": [
+        {
+          "kind": "check",
+          "mode": "all",
+          "members": [
+            "DS-12-native-evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "DS-13",
+      "title": "Consumer cutover and CUDA controller retirement",
+      "objective": "Migrate active resource consumers, fence and retire the old CUDA allocation authority for migrated pools, and verify single-authority operation.",
+      "outcome": "All migrated CUDA and narrow Project Control resource allocation/ownership-query routes use Device Scheduler; Project Control task and agent authority remains intact.",
+      "scope": {
+        "paths": [
+          {
+            "path": "planning",
+            "access": "write"
+          },
+          {
+            "path": "consumer-repositories",
+            "access": "write"
+          },
+          {
+            "path": "scripts/verify_native_evidence.py",
+            "access": "read"
+          },
+          {
+            "path": "packages/device-scheduler-adapters/tests/test_project_control_adapter.py",
+            "access": "read"
+          },
+          {
+            "path": "tests/test_integration_qualification.py",
+            "access": "read"
+          },
+          {
+            "path": "packages",
+            "access": "read"
+          },
+          {
+            "path": "pyproject.toml",
+            "access": "read"
+          },
+          {
+            "path": "uv.lock",
+            "access": "read"
+          }
+        ],
+        "concepts": [
+          "consumer-migration",
+          "single-allocator",
+          "cuda-controller-retirement",
+          "rollback"
+        ],
+        "locks": [
+          {
+            "name": "resource-pool-cutover",
+            "mode": "exclusive"
+          },
+          {
+            "name": "legacy-allocator",
+            "mode": "exclusive"
+          }
+        ]
+      },
+      "acceptance": {
+        "assertions": [
+          "Active consumers and grants are inventoried and ownership is reconciled or transferred",
+          "Old allocator admissions are fenced before switching consumers",
+          "CUDA and narrow Project Control resource allocation/ownership-query paths use Device Scheduler",
+          "Project Control agent, task, workspace, coordination, Todo, and acceptance ownership is not transferred",
+          "Only one allocator is active for each pool in cutover and rollback",
+          "Relevant profiler, topology, quiescence, and isolation safeguards are preserved or replaced with qualified equivalents",
+          "Old controller/coordinator no longer grants resources to migrated pools"
+        ],
+        "required_evidence": [
+          "consumer-migration-receipts",
+          "allocator-fence-evidence",
+          "single-authority-audit",
+          "rollback-record",
+          "legacy-controller-disabled-evidence"
+        ],
+        "allowed_dispositions": [
+          "completed"
+        ]
+      },
+      "ownership": {
+        "mode": "any",
+        "actors": []
+      },
+      "requirement_groups": [
+        {
+          "kind": "check",
+          "mode": "all",
+          "members": [
+            "DS-13-native-evidence"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "DS-14",
+      "title": "Final operational acceptance",
+      "objective": "Verify deployment, documentation, recovery, authority ownership, evidence retention, and remaining capability limits after cutover.",
+      "outcome": "The first release is accepted with an auditable operational state and explicit follow-on work for deferred capabilities.",
+      "scope": {
+        "paths": [
+          {
+            "path": "README.md",
+            "access": "write"
+          },
+          {
+            "path": "AGENTS.md",
+            "access": "write"
+          },
+          {
+            "path": "CODEX.md",
+            "access": "write"
+          },
+          {
+            "path": "planning",
+            "access": "write"
+          },
+          {
+            "path": "scripts/verify_native_evidence.py",
+            "access": "read"
+          },
+          {
+            "path": "tests",
+            "access": "read"
+          },
+          {
+            "path": "packages",
+            "access": "read"
+          },
+          {
+            "path": "pyproject.toml",
+            "access": "read"
+          },
+          {
+            "path": "uv.lock",
+            "access": "read"
+          }
+        ],
+        "concepts": [
+          "operational-acceptance",
+          "authority-ownership",
+          "recovery-documentation",
+          "release-limitations"
+        ],
+        "locks": [
+          {
+            "name": "release-acceptance",
+            "mode": "exclusive"
+          }
+        ]
+      },
+      "acceptance": {
+        "assertions": [
+          "Deployment and recovery runbooks match the qualified host behavior",
+          "Project Control and Device Scheduler responsibilities are documented and observed",
+          "Backups, evidence, logs, and artifact retention procedures are verified",
+          "Multi-host, hostile-tenant, arbitrary checkpoint, and Project Control agent lifecycle ownership remain explicit deferred boundaries",
+          "Final status reports completed evidence and unresolved limitations without overstating capability"
+        ],
+        "required_evidence": [
+          "deployment-runbook",
+          "recovery-drill-record",
+          "authority-boundary-review",
+          "retention-verification",
+          "final-acceptance-record"
+        ],
+        "allowed_dispositions": [
+          "completed"
+        ]
+      },
+      "ownership": {
+        "mode": "any",
+        "actors": []
+      },
+      "requirement_groups": [
+        {
+          "kind": "check",
+          "mode": "all",
+          "members": [
+            "DS-14-native-evidence"
+          ]
+        }
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "source": {
+        "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+        "kind": "work_item",
+        "entity_id": "DS-01"
+      },
+      "mode": "all",
+      "members": [
+        {
+          "relation": "completion",
+          "target": {
+            "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+            "kind": "work_item",
+            "entity_id": "DS-00"
+          }
+        }
+      ]
+    },
+    {
+      "source": {
+        "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+        "kind": "work_item",
+        "entity_id": "DS-02"
+      },
+      "mode": "all",
+      "members": [
+        {
+          "relation": "completion",
+          "target": {
+            "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+            "kind": "work_item",
+            "entity_id": "DS-01"
+          }
+        }
+      ]
+    },
+    {
+      "source": {
+        "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+        "kind": "work_item",
+        "entity_id": "DS-03"
+      },
+      "mode": "all",
+      "members": [
+        {
+          "relation": "completion",
+          "target": {
+            "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+            "kind": "work_item",
+            "entity_id": "DS-02"
+          }
+        }
+      ]
+    },
+    {
+      "source": {
+        "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+        "kind": "work_item",
+        "entity_id": "DS-04"
+      },
+      "mode": "all",
+      "members": [
+        {
+          "relation": "completion",
+          "target": {
+            "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+            "kind": "work_item",
+            "entity_id": "DS-02"
+          }
+        }
+      ]
+    },
+    {
+      "source": {
+        "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+        "kind": "work_item",
+        "entity_id": "DS-05"
+      },
+      "mode": "all",
+      "members": [
+        {
+          "relation": "completion",
+          "target": {
+            "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+            "kind": "work_item",
+            "entity_id": "DS-03"
+          }
+        },
+        {
+          "relation": "completion",
+          "target": {
+            "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+            "kind": "work_item",
+            "entity_id": "DS-04"
+          }
+        }
+      ]
+    },
+    {
+      "source": {
+        "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+        "kind": "work_item",
+        "entity_id": "DS-06"
+      },
+      "mode": "all",
+      "members": [
+        {
+          "relation": "completion",
+          "target": {
+            "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+            "kind": "work_item",
+            "entity_id": "DS-04"
+          }
+        },
+        {
+          "relation": "completion",
+          "target": {
+            "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+            "kind": "work_item",
+            "entity_id": "DS-05"
+          }
+        }
+      ]
+    },
+    {
+      "source": {
+        "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+        "kind": "work_item",
+        "entity_id": "DS-07"
+      },
+      "mode": "all",
+      "members": [
+        {
+          "relation": "completion",
+          "target": {
+            "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+            "kind": "work_item",
+            "entity_id": "DS-03"
+          }
+        },
+        {
+          "relation": "completion",
+          "target": {
+            "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+            "kind": "work_item",
+            "entity_id": "DS-06"
+          }
+        }
+      ]
+    },
+    {
+      "source": {
+        "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+        "kind": "work_item",
+        "entity_id": "DS-08"
+      },
+      "mode": "all",
+      "members": [
+        {
+          "relation": "completion",
+          "target": {
+            "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+            "kind": "work_item",
+            "entity_id": "DS-07"
+          }
+        }
+      ]
+    },
+    {
+      "source": {
+        "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+        "kind": "work_item",
+        "entity_id": "DS-09"
+      },
+      "mode": "all",
+      "members": [
+        {
+          "relation": "completion",
+          "target": {
+            "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+            "kind": "work_item",
+            "entity_id": "DS-01"
+          }
+        },
+        {
+          "relation": "completion",
+          "target": {
+            "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+            "kind": "work_item",
+            "entity_id": "DS-02"
+          }
+        }
+      ]
+    },
+    {
+      "source": {
+        "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+        "kind": "work_item",
+        "entity_id": "DS-10"
+      },
+      "mode": "all",
+      "members": [
+        {
+          "relation": "completion",
+          "target": {
+            "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+            "kind": "work_item",
+            "entity_id": "DS-03"
+          }
+        }
+      ]
+    },
+    {
+      "source": {
+        "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+        "kind": "work_item",
+        "entity_id": "DS-11"
+      },
+      "mode": "all",
+      "members": [
+        {
+          "relation": "completion",
+          "target": {
+            "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+            "kind": "work_item",
+            "entity_id": "DS-02"
+          }
+        },
+        {
+          "relation": "completion",
+          "target": {
+            "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+            "kind": "work_item",
+            "entity_id": "DS-03"
+          }
+        }
+      ]
+    },
+    {
+      "source": {
+        "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+        "kind": "work_item",
+        "entity_id": "DS-12"
+      },
+      "mode": "all",
+      "members": [
+        {
+          "relation": "completion",
+          "target": {
+            "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+            "kind": "work_item",
+            "entity_id": "DS-04"
+          }
+        },
+        {
+          "relation": "completion",
+          "target": {
+            "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+            "kind": "work_item",
+            "entity_id": "DS-05"
+          }
+        },
+        {
+          "relation": "completion",
+          "target": {
+            "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+            "kind": "work_item",
+            "entity_id": "DS-06"
+          }
+        },
+        {
+          "relation": "completion",
+          "target": {
+            "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+            "kind": "work_item",
+            "entity_id": "DS-07"
+          }
+        },
+        {
+          "relation": "completion",
+          "target": {
+            "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+            "kind": "work_item",
+            "entity_id": "DS-08"
+          }
+        },
+        {
+          "relation": "completion",
+          "target": {
+            "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+            "kind": "work_item",
+            "entity_id": "DS-09"
+          }
+        },
+        {
+          "relation": "completion",
+          "target": {
+            "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+            "kind": "work_item",
+            "entity_id": "DS-10"
+          }
+        },
+        {
+          "relation": "completion",
+          "target": {
+            "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+            "kind": "work_item",
+            "entity_id": "DS-11"
+          }
+        }
+      ]
+    },
+    {
+      "source": {
+        "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+        "kind": "work_item",
+        "entity_id": "DS-13"
+      },
+      "mode": "all",
+      "members": [
+        {
+          "relation": "completion",
+          "target": {
+            "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+            "kind": "work_item",
+            "entity_id": "DS-12"
+          }
+        }
+      ]
+    },
+    {
+      "source": {
+        "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+        "kind": "work_item",
+        "entity_id": "DS-14"
+      },
+      "mode": "all",
+      "members": [
+        {
+          "relation": "completion",
+          "target": {
+            "project_id": "5c878e94-2d97-4902-b594-9adb76c3e7fe",
+            "kind": "work_item",
+            "entity_id": "DS-13"
+          }
+        }
+      ]
+    }
+  ],
+  "requirements": [
+    {
+      "id": "DS-00-native-evidence",
+      "work_item_id": "DS-00",
+      "kind": "check",
+      "description": "Verify the DS-00 accepted design baseline, source inventory, identities, and unchanged native task graph.",
+      "check_key": "DS-00-native-evidence",
+      "verification": {
+        "kind": "command",
+        "version": 1,
+        "config": {
+          "argv": [
+            "python3",
+            "-B",
+            "scripts/verify_native_evidence.py",
+            "DS-00"
+          ],
+          "cwd": ".",
+          "timeout_seconds": 60,
+          "expected_exit_codes": [
+            0
+          ]
+        }
+      },
+      "required_evidence": [
+        {
+          "name": "planning/product-spec.md",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "planning/contracts.md",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "planning/capability-matrix.md",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "planning/acceptance.md",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "planning/implementation-plan.json",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "consumer-inventory",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "runtime-source-identity-inventory",
+          "kind": "command_result",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "id": "DS-01-native-evidence",
+      "work_item_id": "DS-01",
+      "kind": "check",
+      "description": "Verify DS-01 source-bound acceptance evidence, focused tests, and required qualification receipts.",
+      "check_key": "DS-01-native-evidence",
+      "verification": {
+        "kind": "command",
+        "version": 1,
+        "config": {
+          "argv": [
+            "python3",
+            "-B",
+            "scripts/verify_native_evidence.py",
+            "DS-01"
+          ],
+          "cwd": ".",
+          "timeout_seconds": 60,
+          "expected_exit_codes": [
+            0
+          ]
+        }
+      },
+      "required_evidence": [
+        {
+          "name": "core-contract-api",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "lifecycle-contract-tests",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "core-import-boundary-report",
+          "kind": "command_result",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "id": "DS-02-native-evidence",
+      "work_item_id": "DS-02",
+      "kind": "check",
+      "description": "Verify DS-02 source-bound acceptance evidence, focused tests, and required qualification receipts.",
+      "check_key": "DS-02-native-evidence",
+      "verification": {
+        "kind": "command",
+        "version": 1,
+        "config": {
+          "argv": [
+            "python3",
+            "-B",
+            "scripts/verify_native_evidence.py",
+            "DS-02"
+          ],
+          "cwd": ".",
+          "timeout_seconds": 60,
+          "expected_exit_codes": [
+            0
+          ]
+        }
+      },
+      "required_evidence": [
+        {
+          "name": "migration-tests",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "idempotency-tests",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "crash-recovery-tests",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "backup-restore-evidence",
+          "kind": "command_result",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "id": "DS-03-native-evidence",
+      "work_item_id": "DS-03",
+      "kind": "check",
+      "description": "Verify DS-03 source-bound acceptance evidence, focused tests, and required qualification receipts.",
+      "check_key": "DS-03-native-evidence",
+      "verification": {
+        "kind": "command",
+        "version": 1,
+        "config": {
+          "argv": [
+            "python3",
+            "-B",
+            "scripts/verify_native_evidence.py",
+            "DS-03"
+          ],
+          "cwd": ".",
+          "timeout_seconds": 60,
+          "expected_exit_codes": [
+            0
+          ]
+        }
+      },
+      "required_evidence": [
+        {
+          "name": "concurrent-allocation-tests",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "policy-invariant-tests",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "policy-explanation-samples",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "handoff-reservation-tests",
+          "kind": "command_result",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "id": "DS-04-native-evidence",
+      "work_item_id": "DS-04",
+      "kind": "check",
+      "description": "Verify DS-04 source-bound acceptance evidence, focused tests, and required qualification receipts.",
+      "check_key": "DS-04-native-evidence",
+      "verification": {
+        "kind": "command",
+        "version": 1,
+        "config": {
+          "argv": [
+            "python3",
+            "-B",
+            "scripts/verify_native_evidence.py",
+            "DS-04"
+          ],
+          "cwd": ".",
+          "timeout_seconds": 60,
+          "expected_exit_codes": [
+            0
+          ]
+        }
+      },
+      "required_evidence": [
+        {
+          "name": "systemd-authorization-qualification",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "cgroup-control-qualification",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "restart-reconciliation-tests",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "process-tree-cleanup-evidence",
+          "kind": "command_result",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "id": "DS-05-native-evidence",
+      "work_item_id": "DS-05",
+      "kind": "check",
+      "description": "Verify DS-05 source-bound acceptance evidence, focused tests, and required qualification receipts.",
+      "check_key": "DS-05-native-evidence",
+      "verification": {
+        "kind": "command",
+        "version": 1,
+        "config": {
+          "argv": [
+            "python3",
+            "-B",
+            "scripts/verify_native_evidence.py",
+            "DS-05"
+          ],
+          "cwd": ".",
+          "timeout_seconds": 60,
+          "expected_exit_codes": [
+            0
+          ]
+        }
+      },
+      "required_evidence": [
+        {
+          "name": "gpu-inventory-fixtures",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "gpu-admission-tests",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "topology-tests",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "isolated-gpu-qualification",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "exclusivity-reclamation-receipts",
+          "kind": "command_result",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "id": "DS-06-native-evidence",
+      "work_item_id": "DS-06",
+      "kind": "check",
+      "description": "Verify DS-06 source-bound acceptance evidence, focused tests, and required qualification receipts.",
+      "check_key": "DS-06-native-evidence",
+      "verification": {
+        "kind": "command",
+        "version": 1,
+        "config": {
+          "argv": [
+            "python3",
+            "-B",
+            "scripts/verify_native_evidence.py",
+            "DS-06"
+          ],
+          "cwd": ".",
+          "timeout_seconds": 60,
+          "expected_exit_codes": [
+            0
+          ]
+        }
+      },
+      "required_evidence": [
+        {
+          "name": "backend-lifecycle-tests",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "llama-cpp-readiness-evidence",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "weight-reclamation-evidence",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "pinned-restore-evidence",
+          "kind": "command_result",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "id": "DS-07-native-evidence",
+      "work_item_id": "DS-07",
+      "kind": "check",
+      "description": "Verify DS-07 source-bound acceptance evidence, focused tests, and required qualification receipts.",
+      "check_key": "DS-07-native-evidence",
+      "verification": {
+        "kind": "command",
+        "version": 1,
+        "config": {
+          "argv": [
+            "python3",
+            "-B",
+            "scripts/verify_native_evidence.py",
+            "DS-07"
+          ],
+          "cwd": ".",
+          "timeout_seconds": 60,
+          "expected_exit_codes": [
+            0
+          ]
+        }
+      },
+      "required_evidence": [
+        {
+          "name": "phase-transition-tests",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "failure-injection-matrix",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "result-delivery-deduplication",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "restoration-recovery-tests",
+          "kind": "command_result",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "id": "DS-08-native-evidence",
+      "work_item_id": "DS-08",
+      "kind": "check",
+      "description": "Verify DS-08 source-bound acceptance evidence, focused tests, and required qualification receipts.",
+      "check_key": "DS-08-native-evidence",
+      "verification": {
+        "kind": "command",
+        "version": 1,
+        "config": {
+          "argv": [
+            "python3",
+            "-B",
+            "scripts/verify_native_evidence.py",
+            "DS-08"
+          ],
+          "cwd": ".",
+          "timeout_seconds": 60,
+          "expected_exit_codes": [
+            0
+          ]
+        }
+      },
+      "required_evidence": [
+        {
+          "name": "frameshift-contract-review",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "continuation-adapter-tests",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "duplicate-delivery-tests",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "agent-tool-boundary-e2e",
+          "kind": "command_result",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "id": "DS-09-native-evidence",
+      "work_item_id": "DS-09",
+      "kind": "check",
+      "description": "Verify DS-09 source-bound acceptance evidence, focused tests, and required qualification receipts.",
+      "check_key": "DS-09-native-evidence",
+      "verification": {
+        "kind": "command",
+        "version": 1,
+        "config": {
+          "argv": [
+            "python3",
+            "-B",
+            "scripts/verify_native_evidence.py",
+            "DS-09"
+          ],
+          "cwd": ".",
+          "timeout_seconds": 60,
+          "expected_exit_codes": [
+            0
+          ]
+        }
+      },
+      "required_evidence": [
+        {
+          "name": "api-schema",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "transport-contract-tests",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "authorization-matrix-tests",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "sdk-cli-parity-tests",
+          "kind": "command_result",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "id": "DS-10-native-evidence",
+      "work_item_id": "DS-10",
+      "kind": "check",
+      "description": "Verify DS-10 source-bound acceptance evidence, focused tests, and required qualification receipts.",
+      "check_key": "DS-10-native-evidence",
+      "verification": {
+        "kind": "command",
+        "version": 1,
+        "config": {
+          "argv": [
+            "python3",
+            "-B",
+            "scripts/verify_native_evidence.py",
+            "DS-10"
+          ],
+          "cwd": ".",
+          "timeout_seconds": 60,
+          "expected_exit_codes": [
+            0
+          ]
+        }
+      },
+      "required_evidence": [
+        {
+          "name": "schedule-boundary-tests",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "timezone-dst-tests",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "misfire-overlap-tests",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "dependency-cycle-tests",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "event-deduplication-tests",
+          "kind": "command_result",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "id": "DS-11-native-evidence",
+      "work_item_id": "DS-11",
+      "kind": "check",
+      "description": "Verify DS-11 source-bound acceptance evidence, focused tests, and required qualification receipts.",
+      "check_key": "DS-11-native-evidence",
+      "verification": {
+        "kind": "command",
+        "version": 1,
+        "config": {
+          "argv": [
+            "python3",
+            "-B",
+            "scripts/verify_native_evidence.py",
+            "DS-11"
+          ],
+          "cwd": ".",
+          "timeout_seconds": 60,
+          "expected_exit_codes": [
+            0
+          ]
+        }
+      },
+      "required_evidence": [
+        {
+          "name": "explanation-contract-tests",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "artifact-bound-tests",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "replay-no-side-effect-tests",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "health-reconciliation-tests",
+          "kind": "command_result",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "id": "DS-12-native-evidence",
+      "work_item_id": "DS-12",
+      "kind": "check",
+      "description": "Verify DS-12 source-bound acceptance evidence, focused tests, and required qualification receipts.",
+      "check_key": "DS-12-native-evidence",
+      "verification": {
+        "kind": "command",
+        "version": 1,
+        "config": {
+          "argv": [
+            "python3",
+            "-B",
+            "scripts/verify_native_evidence.py",
+            "DS-12"
+          ],
+          "cwd": ".",
+          "timeout_seconds": 60,
+          "expected_exit_codes": [
+            0
+          ]
+        }
+      },
+      "required_evidence": [
+        {
+          "name": "qualification-report",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "gpu-handoff-e2e-receipt",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "crash-injection-results",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "independent-review-record",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "updated-capability-matrix",
+          "kind": "command_result",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "id": "DS-13-native-evidence",
+      "work_item_id": "DS-13",
+      "kind": "check",
+      "description": "Verify DS-13 source-bound acceptance evidence, focused tests, and required qualification receipts.",
+      "check_key": "DS-13-native-evidence",
+      "verification": {
+        "kind": "command",
+        "version": 1,
+        "config": {
+          "argv": [
+            "python3",
+            "-B",
+            "scripts/verify_native_evidence.py",
+            "DS-13"
+          ],
+          "cwd": ".",
+          "timeout_seconds": 60,
+          "expected_exit_codes": [
+            0
+          ]
+        }
+      },
+      "required_evidence": [
+        {
+          "name": "consumer-migration-receipts",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "allocator-fence-evidence",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "single-authority-audit",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "rollback-record",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "legacy-controller-disabled-evidence",
+          "kind": "command_result",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "id": "DS-14-native-evidence",
+      "work_item_id": "DS-14",
+      "kind": "check",
+      "description": "Verify DS-14 source-bound acceptance evidence, focused tests, and required qualification receipts.",
+      "check_key": "DS-14-native-evidence",
+      "verification": {
+        "kind": "command",
+        "version": 1,
+        "config": {
+          "argv": [
+            "python3",
+            "-B",
+            "scripts/verify_native_evidence.py",
+            "DS-14"
+          ],
+          "cwd": ".",
+          "timeout_seconds": 60,
+          "expected_exit_codes": [
+            0
+          ]
+        }
+      },
+      "required_evidence": [
+        {
+          "name": "deployment-runbook",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "recovery-drill-record",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "authority-boundary-review",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "retention-verification",
+          "kind": "command_result",
+          "version": 1
+        },
+        {
+          "name": "final-acceptance-record",
+          "kind": "command_result",
+          "version": 1
+        }
+      ]
+    }
+  ]
+}

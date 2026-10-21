@@ -1,0 +1,40 @@
+{
+  "attempt_id": "qualification-70ae14bb-99e7-4745-ae55-2b807f3648e0",
+  "execution_handle": {
+    "adapter_id": "systemd-user-unit",
+    "external_id": "device-scheduler-attempt-9a6211398114c9b53c80e28431a69943.service",
+    "identity": "qualification-70ae14bb-99e7-4745-ae55-2b807f3648e0",
+    "metadata": {
+      "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-9a6211398114c9b53c80e28431a69943.service",
+      "description": "Device Scheduler attempt qualification-70ae14bb-99e7-4745-ae55-2b807f3648e0",
+      "handle_version": 1,
+      "invocation_id": "a6c96db049bc411da778c3cf408754ad",
+      "reconciled": true
+    },
+    "started_at": "2026-10-21T15:39:36.098695Z"
+  },
+  "fresh_process_reconciliation": true,
+  "observation": {
+    "active_state": "active",
+    "cleanup_verified": false,
+    "evidence": {
+      "adapter": "systemd-user-unit/v1",
+      "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-9a6211398114c9b53c80e28431a69943.service",
+      "invocation_id": "a6c96db049bc411da778c3cf408754ad",
+      "main_code": "0",
+      "unit_description": "Device Scheduler attempt qualification-70ae14bb-99e7-4745-ae55-2b807f3648e0"
+    },
+    "exit_code": null,
+    "invocation_id": "a6c96db049bc411da778c3cf408754ad",
+    "logs": "CHILD_PID=155888\n",
+    "logs_error": null,
+    "logs_truncated": false,
+    "result": "success",
+    "state": "running",
+    "substate": "running",
+    "unit_name": "device-scheduler-attempt-9a6211398114c9b53c80e28431a69943.service"
+  },
+  "observed_at": "2026-10-21T15:39:36.119520+00:00",
+  "scheduler_daemon_restarted": false,
+  "schema_version": 1
+}

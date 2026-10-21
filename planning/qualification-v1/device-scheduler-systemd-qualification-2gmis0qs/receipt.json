@@ -1,0 +1,160 @@
+{
+  "attempt_id": "qualification-70ae14bb-99e7-4745-ae55-2b807f3648e0",
+  "checks": {
+    "cgroup_cleanup_verified": true,
+    "child_process_tree_gone": true,
+    "cpu_quota_applied": true,
+    "deterministic_unit_identity": true,
+    "fresh_process_observed_running_unit": true,
+    "fresh_process_resolved_same_invocation": true,
+    "invocation_identity_bound": true,
+    "memory_limit_applied": true,
+    "systemd_stop_acknowledged": true,
+    "task_limit_applied": true,
+    "whole_tree_cgroup_matches": true
+  },
+  "child": {
+    "after_stop": {
+      "cgroups": [],
+      "state": "not_present"
+    },
+    "before_stop": {
+      "cgroups": [
+        "0::/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-9a6211398114c9b53c80e28431a69943.service"
+      ],
+      "state": "R"
+    },
+    "cgroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-9a6211398114c9b53c80e28431a69943.service",
+    "pid": 155888,
+    "systemd_control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-9a6211398114c9b53c80e28431a69943.service"
+  },
+  "execution_handle": {
+    "adapter_id": "systemd-user-unit",
+    "external_id": "device-scheduler-attempt-9a6211398114c9b53c80e28431a69943.service",
+    "identity": "qualification-70ae14bb-99e7-4745-ae55-2b807f3648e0",
+    "metadata": {
+      "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-9a6211398114c9b53c80e28431a69943.service",
+      "description": "Device Scheduler attempt qualification-70ae14bb-99e7-4745-ae55-2b807f3648e0",
+      "execution_root": "/home/tumlinson/device-scheduler/planning/qualification-v1/device-scheduler-systemd-qualification-2gmis0qs/exec",
+      "handle_version": 1,
+      "invocation_id": "a6c96db049bc411da778c3cf408754ad",
+      "profile_id": "systemd-qualification",
+      "profile_version": "systemd-qualification-v1"
+    },
+    "started_at": "2026-10-21T15:39:35.920455Z"
+  },
+  "finished_at": "2026-10-21T15:39:38.417937+00:00",
+  "fresh_process_reconciliation": {
+    "attempt_id": "qualification-70ae14bb-99e7-4745-ae55-2b807f3648e0",
+    "execution_handle": {
+      "adapter_id": "systemd-user-unit",
+      "external_id": "device-scheduler-attempt-9a6211398114c9b53c80e28431a69943.service",
+      "identity": "qualification-70ae14bb-99e7-4745-ae55-2b807f3648e0",
+      "metadata": {
+        "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-9a6211398114c9b53c80e28431a69943.service",
+        "description": "Device Scheduler attempt qualification-70ae14bb-99e7-4745-ae55-2b807f3648e0",
+        "handle_version": 1,
+        "invocation_id": "a6c96db049bc411da778c3cf408754ad",
+        "reconciled": true
+      },
+      "started_at": "2026-10-21T15:39:36.098695Z"
+    },
+    "fresh_process_reconciliation": true,
+    "observation": {
+      "active_state": "active",
+      "cleanup_verified": false,
+      "evidence": {
+        "adapter": "systemd-user-unit/v1",
+        "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-9a6211398114c9b53c80e28431a69943.service",
+        "invocation_id": "a6c96db049bc411da778c3cf408754ad",
+        "main_code": "0",
+        "unit_description": "Device Scheduler attempt qualification-70ae14bb-99e7-4745-ae55-2b807f3648e0"
+      },
+      "exit_code": null,
+      "invocation_id": "a6c96db049bc411da778c3cf408754ad",
+      "logs": "CHILD_PID=155888\n",
+      "logs_error": null,
+      "logs_truncated": false,
+      "result": "success",
+      "state": "running",
+      "substate": "running",
+      "unit_name": "device-scheduler-attempt-9a6211398114c9b53c80e28431a69943.service"
+    },
+    "observed_at": "2026-10-21T15:39:36.119520+00:00",
+    "scheduler_daemon_restarted": false,
+    "schema_version": 1
+  },
+  "manager_properties": {
+    "CPUQuotaPerSecUSec": "1s",
+    "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-9a6211398114c9b53c80e28431a69943.service",
+    "Description": "Device Scheduler attempt qualification-70ae14bb-99e7-4745-ae55-2b807f3648e0",
+    "Id": "device-scheduler-attempt-9a6211398114c9b53c80e28431a69943.service",
+    "InvocationID": "a6c96db049bc411da778c3cf408754ad",
+    "MemoryMax": "268435456",
+    "TasksMax": "32"
+  },
+  "output_directory": "/home/tumlinson/device-scheduler/planning/qualification-v1/device-scheduler-systemd-qualification-2gmis0qs",
+  "preflight": {
+    "cgroup_v2_controllers": [
+      "cpu",
+      "cpuset",
+      "hugetlb",
+      "io",
+      "memory",
+      "misc",
+      "pids",
+      "rdma"
+    ],
+    "platform": "linux",
+    "systemctl": "/usr/bin/systemctl",
+    "systemd_run": "/usr/bin/systemd-run",
+    "uid": 1000,
+    "user_manager": "reachable"
+  },
+  "qualification": "systemd-user-unit-cpu-only",
+  "required_checks": [
+    "cgroup_cleanup_verified",
+    "child_process_tree_gone",
+    "cpu_quota_applied",
+    "deterministic_unit_identity",
+    "fresh_process_observed_running_unit",
+    "fresh_process_resolved_same_invocation",
+    "invocation_identity_bound",
+    "memory_limit_applied",
+    "systemd_stop_acknowledged",
+    "task_limit_applied",
+    "whole_tree_cgroup_matches"
+  ],
+  "scheduler_daemon_restarted": false,
+  "schema_version": 1,
+  "scope_limitations": [
+    "fresh Python-process adapter reconciliation only; scheduler daemon restart not exercised",
+    "CPU-only finite helper; no GPU/model or malicious-workload qualification",
+    "same-user cgroup controls do not establish hostile-tenant isolation"
+  ],
+  "started_at": "2026-10-21T15:39:35.871249+00:00",
+  "stop_receipt": {
+    "active_state": "failed",
+    "cleanup_verified": true,
+    "evidence": {
+      "adapter": "systemd-user-unit/v1",
+      "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-9a6211398114c9b53c80e28431a69943.service",
+      "invocation_id": "a6c96db049bc411da778c3cf408754ad",
+      "main_code": "2",
+      "unit_description": "Device Scheduler attempt qualification-70ae14bb-99e7-4745-ae55-2b807f3648e0"
+    },
+    "exit_code": 15,
+    "invocation_id": "a6c96db049bc411da778c3cf408754ad",
+    "logs": "CHILD_PID=155888\n",
+    "logs_error": null,
+    "logs_truncated": false,
+    "operation_id": "qualification-stop:qualification-70ae14bb-99e7-4745-ae55-2b807f3648e0",
+    "result": "timeout",
+    "state": "failed",
+    "stop_requested": true,
+    "substate": "failed",
+    "unit_name": "device-scheduler-attempt-9a6211398114c9b53c80e28431a69943.service"
+  },
+  "unit_name": "device-scheduler-attempt-9a6211398114c9b53c80e28431a69943.service",
+  "verdict": "pass"
+}

@@ -1,0 +1,73 @@
+{
+  "attempt_id": "qualification-3f3c6bb0-30a2-479b-8e4d-d9c1074ba342",
+  "checks": {},
+  "cleanup_after_error": {
+    "active_state": "failed",
+    "cleanup_verified": false,
+    "evidence": {
+      "adapter": "systemd-user-unit/v1",
+      "control_group": "",
+      "invocation_id": "5758c9992389402da79ad0a34faaadcc",
+      "main_code": "2",
+      "unit_description": "Device Scheduler attempt qualification-3f3c6bb0-30a2-479b-8e4d-d9c1074ba342"
+    },
+    "exit_code": 15,
+    "invocation_id": "5758c9992389402da79ad0a34faaadcc",
+    "logs": "",
+    "logs_truncated": false,
+    "operation_id": "qualification-cleanup:qualification-3f3c6bb0-30a2-479b-8e4d-d9c1074ba342",
+    "result": "timeout",
+    "state": "failed",
+    "stop_requested": true,
+    "substate": "failed",
+    "unit_name": "device-scheduler-attempt-b7cee96b0754c2b709c0c36f3936cb7b.service"
+  },
+  "error": {
+    "message": "unit did not report its child PID; last observation=running",
+    "type": "RuntimeError"
+  },
+  "execution_handle": {
+    "adapter_id": "systemd-user-unit",
+    "external_id": "device-scheduler-attempt-b7cee96b0754c2b709c0c36f3936cb7b.service",
+    "identity": "qualification-3f3c6bb0-30a2-479b-8e4d-d9c1074ba342",
+    "metadata": {
+      "description": "Device Scheduler attempt qualification-3f3c6bb0-30a2-479b-8e4d-d9c1074ba342",
+      "execution_root": "/home/tumlinson/device-scheduler/planning/qualification-v1/device-scheduler-systemd-qualification-vylywmqg/exec",
+      "handle_version": 1,
+      "invocation_id": "5758c9992389402da79ad0a34faaadcc",
+      "profile_id": "systemd-qualification",
+      "profile_version": "systemd-qualification-v1"
+    },
+    "started_at": "2026-10-21T15:27:07.319223Z"
+  },
+  "finished_at": "2026-10-21T15:27:21.665353+00:00",
+  "output_directory": "/home/tumlinson/device-scheduler/planning/qualification-v1/device-scheduler-systemd-qualification-vylywmqg",
+  "preflight": {
+    "cgroup_v2_controllers": [
+      "cpu",
+      "cpuset",
+      "hugetlb",
+      "io",
+      "memory",
+      "misc",
+      "pids",
+      "rdma"
+    ],
+    "platform": "linux",
+    "systemctl": "/usr/bin/systemctl",
+    "systemd_run": "/usr/bin/systemd-run",
+    "uid": 1000,
+    "user_manager": "reachable"
+  },
+  "qualification": "systemd-user-unit-cpu-only",
+  "scheduler_daemon_restarted": false,
+  "schema_version": 1,
+  "scope_limitations": [
+    "fresh Python-process adapter reconciliation only; scheduler daemon restart not exercised",
+    "CPU-only finite helper; no GPU/model or malicious-workload qualification",
+    "same-user cgroup controls do not establish hostile-tenant isolation"
+  ],
+  "started_at": "2026-10-21T15:27:07.265525+00:00",
+  "unit_name": "device-scheduler-attempt-b7cee96b0754c2b709c0c36f3936cb7b.service",
+  "verdict": "incomplete"
+}

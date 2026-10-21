@@ -1,0 +1,22 @@
+{
+  "attempt_id": "qualification-70ae14bb-99e7-4745-ae55-2b807f3648e0",
+  "created_at": "2026-10-21T15:39:35.920573+00:00",
+  "execution_handle": {
+    "adapter_id": "systemd-user-unit",
+    "external_id": "device-scheduler-attempt-9a6211398114c9b53c80e28431a69943.service",
+    "identity": "qualification-70ae14bb-99e7-4745-ae55-2b807f3648e0",
+    "metadata": {
+      "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-9a6211398114c9b53c80e28431a69943.service",
+      "description": "Device Scheduler attempt qualification-70ae14bb-99e7-4745-ae55-2b807f3648e0",
+      "execution_root": "/home/tumlinson/device-scheduler/planning/qualification-v1/device-scheduler-systemd-qualification-2gmis0qs/exec",
+      "handle_version": 1,
+      "invocation_id": "a6c96db049bc411da778c3cf408754ad",
+      "profile_id": "systemd-qualification",
+      "profile_version": "systemd-qualification-v1"
+    },
+    "started_at": "2026-10-21T15:39:35.920455Z"
+  },
+  "intent_persisted_before_start": true,
+  "schema_version": 1,
+  "unit_name": "device-scheduler-attempt-9a6211398114c9b53c80e28431a69943.service"
+}

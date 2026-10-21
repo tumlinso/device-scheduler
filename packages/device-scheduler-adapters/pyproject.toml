@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "device-scheduler-adapters"
+version = "0.1.0"
+description = "Persistence and environment adapters for Device Scheduler"
+requires-python = ">=3.11"
+dependencies = ["device-scheduler-core==0.1.0"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.uv.sources]
+device-scheduler-core = { workspace = true }

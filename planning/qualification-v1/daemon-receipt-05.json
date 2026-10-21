@@ -1,0 +1,48 @@
+{
+  "attempt_id": "c203c11c-1a18-4272-a870-e2aeb65eb2af",
+  "checks": {
+    "cleanup_verified": true,
+    "cli_same_job": true,
+    "completed": true,
+    "health": true,
+    "mcp_auth_denied": true,
+    "one_physical_launch": true,
+    "running_before_crash": true,
+    "same_attempt_after_crash": true,
+    "same_invocation_after_crash": true,
+    "sdk_submit": true
+  },
+  "cleanup": {
+    "active_state": "active",
+    "cleanup_verified": true,
+    "evidence": {
+      "adapter": "systemd-user-unit/v1",
+      "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-33102b33fc2f3ac46732b4c2859f115b.service",
+      "invocation_id": "99bbc74c0d2f413ab4d60d9b16c6d373",
+      "main_code": "1",
+      "unit_description": "Device Scheduler attempt c203c11c-1a18-4272-a870-e2aeb65eb2af"
+    },
+    "exit_code": 0,
+    "invocation_id": "99bbc74c0d2f413ab4d60d9b16c6d373",
+    "logs": "qualification-complete\n",
+    "logs_error": null,
+    "logs_truncated": false,
+    "operation_id": "qualification-final-cleanup",
+    "result": "success",
+    "state": "succeeded",
+    "stop_requested": true,
+    "substate": "exited",
+    "unit_name": "device-scheduler-attempt-33102b33fc2f3ac46732b4c2859f115b.service"
+  },
+  "diagnostic_directory": "/tmp/device-scheduler-daemon-qualification-u02h1dc8",
+  "final_state": "succeeded",
+  "gpu_allocations_requested": false,
+  "invocation_id": "99bbc74c0d2f413ab4d60d9b16c6d373",
+  "job_id": "c5d34068-21ae-4c8f-8325-4ae7299d4c81",
+  "limitations": [
+    "one cooperative finite CPU helper; not GPU or model qualification"
+  ],
+  "schema_version": 1,
+  "scope": "live-http-mcp-and-cpu-daemon-crash",
+  "verdict": "pass"
+}

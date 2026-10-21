@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "device-scheduler-dev"
+version = "0.0.0"
+description = "Local development metapackage for the Device Scheduler workspace"
+requires-python = ">=3.11"
+dependencies = ["device-scheduler-core", "device-scheduler-adapters", "device-scheduler-mcp"]
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "build>=1,<2"]
+
+[tool.uv.workspace]
+members = ["packages/device-scheduler-core", "packages/device-scheduler-adapters", "packages/device-scheduler-mcp"]
+
+[tool.uv.sources]
+device-scheduler-core = { workspace = true }
+device-scheduler-adapters = { workspace = true }
+device-scheduler-mcp = { workspace = true }
+
+[tool.setuptools]
+packages = []
+
+[tool.pytest.ini_options]
+testpaths = [
+  "tests",
+  "packages/device-scheduler-core/tests",
+  "packages/device-scheduler-adapters/tests",
+  "packages/device-scheduler-mcp/tests",
+]
+pythonpath = [
+  "packages/device-scheduler-core/src",
+  "packages/device-scheduler-adapters/src",
+  "packages/device-scheduler-mcp/src",
+]
+

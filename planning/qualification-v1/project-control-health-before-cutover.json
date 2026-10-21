@@ -1,0 +1,61 @@
+{
+  "observed_at": "2026-10-21T16:47:52.583540+00:00",
+  "purpose": "Project Control health after maintenance, before Device Scheduler deployment",
+  "endpoints": {
+    "/healthz": {
+      "http_status": 200,
+      "body": {
+        "status": "ok",
+        "jobs": {
+          "dispatcher": "running",
+          "last_error": null,
+          "durable": true
+        },
+        "central_inference": {
+          "status": "unavailable",
+          "reason": "central_supervisor_unavailable"
+        }
+      }
+    },
+    "/readyz": {
+      "http_status": 200,
+      "body": {
+        "status": "ready",
+        "core": {
+          "status": "available",
+          "configuration": "valid",
+          "workflow_engine": "available",
+          "fingerprint": "613ec4537777eb0c434906f3b87493aea757d97c31e34de9518b9e29bfe0db33"
+        },
+        "central_inference": {
+          "status": "unavailable",
+          "reason": "central_supervisor_unavailable"
+        },
+        "optional_content": {
+          "status": "available",
+          "catalog_sha256": "096be336db49fea8eb7dd73dafe279690589733e8a884b4a8fed038bd9b48b03",
+          "skill_count": 4
+        }
+      }
+    },
+    "/version": {
+      "http_status": 200,
+      "body": {
+        "name": "project-control",
+        "version": "0.4.2",
+        "tool_schema_version": 12,
+        "features": {
+          "automatic_overview": false
+        }
+      }
+    }
+  },
+  "systemd": {
+    "MainPID": "128745",
+    "ExecMainStatus": "0",
+    "ActiveState": "active",
+    "SubState": "running"
+  },
+  "selected_release": "/home/tumlinson/.local/state/project-control/venvs/pc-sealed-0.4.2-0811a3a",
+  "device_scheduler_deployed": false
+}

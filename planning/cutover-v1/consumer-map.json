@@ -1,0 +1,199 @@
+{
+  "schema_version": 1,
+  "status": "preparation_only",
+  "snapshot_date": "2026-10-21",
+  "project_control_source": {
+    "checkout": "/home/tumlinson/project-control",
+    "inventory_head": "07849abd39af476fcd0c6fc3828bf77d6b51b1a9",
+    "preparation_head": "a50b617ea5b948b9594be9021e8cea60c941c4fd",
+    "working_tree_was_clean_at_preparation": true,
+    "note": "The source files below still match the inventory SHA-256 values even though the checkout HEAD advanced. Runtime source identity must be rechecked at qualification."
+  },
+  "allocation_authority": {
+    "current": "Project Control HostCoordinator plus the legacy CUDA controller runtime binding; exact live controller source is unresolved",
+    "target": "Device Scheduler only",
+    "cutover_complete": false,
+    "dual_allocator_allowed": false,
+    "fence_before_switch": true,
+    "unknown_reclamation_blocks_admission": true
+  },
+  "controller_source_identity": {
+    "compatibility_path": "/home/tumlinson/.agents/skills/cuda/scripts/cuda_controller.py",
+    "inspected_sha256": "d16b5ae270fc63b27e8191e15c6385688e8d9e4799b0e756dfe82e68c08ee245",
+    "runtime_binding": "unresolved; do not infer that this compatibility path is the module loaded by a live invocation",
+    "important_surfaces": [
+      {
+        "command": "run --spec",
+        "use": "legacy admission, execution, and result/cleanup receipt for CUDA workloads",
+        "target": "jobs.submit / jobs.wait / jobs.control with the registered CUDA execution profile"
+      },
+      {
+        "command": "probe --spec",
+        "use": "registered performance-probe campaign execution",
+        "target": "jobs.submit / jobs.wait / jobs.logs under a constrained profile; retain campaign/evidence data outside the scheduler"
+      },
+      {
+        "command": "registry discover",
+        "use": "local-worker campaign discovery; not an allocation operation",
+        "target": "preserve or replace as a read-only campaign-registry function; it must stop resolving the retired controller entrypoint"
+      },
+      {
+        "command": "foreground coordination",
+        "use": "foreground admission and quiescence coordination around GPU work",
+        "target": "explicit job/lease lifecycle and qualified quiescence evidence; no caller self-asserted free receipt"
+      }
+    ]
+  },
+  "consumers": [
+    {
+      "id": "pc-host-resource-authority",
+      "owner": "Project Control",
+      "files": [
+        {
+          "path": "src/project_control/host_resources/facade.py",
+          "sha256": "ae7f65457335bc40869bef5ee2c992e4440e953a910f12b8d6fe63193ba0a439",
+          "symbols": ["HostResourceFacade", "reserve_background", "reserve_service", "begin_foreground", "owner", "owners_for_attempt", "release", "heartbeat"]
+        },
+        {
+          "path": "src/project_control/host_resources/coordinator.py",
+          "sha256": "6cbbe1f45a6ac62b3f89c2b99a559667b605054443a040804b33f9fe413c2c4c",
+          "symbols": ["HostCoordinator", "reserve_background", "reserve_service", "begin_foreground", "activate_foreground", "request_preemption", "release"]
+        }
+      ],
+      "active_contract": "HostResourceFacade public methods and reservation/owner DTOs",
+      "target": "DeviceSchedulerProjectControlAdapter injected with the public async SDK; allocation, renewal, release, inventory and owner queries use Device Scheduler MCP operations",
+      "unsupported_legacy_calls": ["reserve_service", "preempt_requested", "request_preemption", "set_priority", "protect_residency", "record_residency_process", "reconcile_current_service_owners", "register_drain_callback", "drain_if_requested"],
+      "migration_rule": "Unsupported legacy semantics fail closed. Managed model lifecycle callers migrate to backend/handoff semantics instead of emulating these calls as raw leases.",
+      "line_refs": ["facade.py:76", "facade.py:87", "facade.py:99", "facade.py:110", "facade.py:113", "facade.py:116", "facade.py:119", "facade.py:122", "facade.py:125", "facade.py:157", "facade.py:162", "facade.py:215", "facade.py:218", "facade.py:221", "facade.py:225"]
+    },
+    {
+      "id": "pc-managed-model-supervisor",
+      "owner": "Project Control model/agent service lifecycle",
+      "files": [
+        {
+          "path": "src/project_control/local_runtime/local_worker/supervisor.py",
+          "sha256": "ee167f80b9a09741007e872d0bc0817308a48c9a5e93fe75eadd9fbb717f5071",
+          "symbols": ["_eligible_bundles", "admit", "_start_slot", "_evict_slot", "_reconcile_host_owners"]
+        },
+        {
+          "path": "src/project_control/local_runtime/local_worker/service.py",
+          "sha256": "5950a45aeaa8091133f623ecdb5f74c71b7683e54eba67d4f2d54c488b3577eb",
+          "symbols": ["ResourceCoordinator", "AdapterService.start", "_monitor_lease", "stop"]
+        },
+        {
+          "path": "src/project_control/host_resources/runtime.py",
+          "sha256": "25819955799b0db80f67f21b8246e8238adb9bd41986532ed732f4486a7c00af",
+          "symbols": ["LocalWorkerRuntime.__init__", "HostResourceFacade(HostCoordinator())"]
+        }
+      ],
+      "active_contract": "Supervisor reserves GPU bundles through HostResourceFacade, adjusts priority, polls preemption, tracks residency-process identity, renews owner heartbeats, and releases only after verified model-process and GPU-memory quiescence. LocalWorkerRuntime constructs the facade with HostCoordinator by default. Model inference and Project Control agent/task coordination remain Project Control responsibilities.",
+      "target": "Inject the Device Scheduler SDK and backend client at the LocalWorkerRuntime composition seam. Device Scheduler registers, starts, inspects, and owns the managed model process/backend and its residency allocation; Project Control retains inference RPC against the ready backend endpoint. Use handoffs.submit/control only with an explicit eviction grant and a verified consumer-drain contract. Consumers without that integration are registered as non-evictable and handoff is refused. Ordinary lease API is only for independently scoped reservations.",
+      "preserve": ["backend readiness", "attached-consumer drain contract", "profile/version pin", "quiescence evidence", "verified stop/restore", "model-service API and Project Control ownership", "no parallel local process launch"],
+      "line_refs": ["supervisor.py:780", "supervisor.py:836", "supervisor.py:864", "supervisor.py:880", "supervisor.py:992", "supervisor.py:1147", "supervisor.py:1436", "supervisor.py:1802", "supervisor.py:1843", "service.py:76", "service.py:134", "service.py:140", "service.py:160", "service.py:228"]
+    },
+    {
+      "id": "pc-native-owner-readers",
+      "owner": "Project Control",
+      "files": [
+        {
+          "path": "src/project_control/native_providers.py",
+          "sha256": "f246a60fb896af12e2762ddb2cd279c91eb90111e00c2a4f356714b3a2cf80ba",
+          "symbols": ["HostCoordinator(create=False)", "HostResourceFacade", "owner"]
+        },
+        {
+          "path": "src/project_control/assistance/lab_gpu.py",
+          "sha256": "bf49b190af83db6883a9cb6bd6b70d73bb1b8c33f1bf8706093dd9c21e62bc59",
+          "symbols": ["native_owner_reader", "GpuLabExecutor"]
+        }
+      ],
+      "active_contract": "Read physical resource owner records and reject writes while conflicting owners remain",
+      "target": "leases.list/get and backends.list/get through the injected Device Scheduler client; expose ledger state separately from verified process/backend observations",
+      "line_refs": ["native_providers.py:1079", "lab_gpu.py:1086"]
+    },
+    {
+      "id": "pc-as1-jobs-owner-fence",
+      "owner": "Project Control",
+      "files": [
+        {
+          "path": "src/project_control/as1_jobs.py",
+          "sha256": "a276876f84db7bee31b51d05abced6a44c2e92e813476767c23047384f71c6c5",
+          "symbols": ["HostCoordinator(create=False)", "owner_activity"]
+        }
+      ],
+      "active_contract": "Fence AS1 writes using live owner and active reservation counts from the PC-owned SQLite database",
+      "target": "Replace direct SQLite ownership read with authenticated leases/backend queries and fail closed on unavailable or unknown scheduler state",
+      "line_refs": ["as1_jobs.py:102"]
+    },
+    {
+      "id": "pc-physical-release-owner-fences",
+      "owner": "Project Control physical-release verification",
+      "files": [
+        {
+          "path": "src/project_control/observer_analysis.py",
+          "sha256": "708853989c2710a13a7ac16d22ad6c2c52f723ca7b5700af2553e5fa0c0c23a7",
+          "symbols": ["_fresh_host_release_observation", "owner_activity"]
+        }
+      ],
+      "active_contract": "Require zero active owners, allocations, and foreground intents before accepting physical-release observations; verify exact owner IDs have no remaining active reservations.",
+      "target": "Query Device Scheduler leases and backend observations through the injected authenticated SDK. Count unresolved, release-requested, reclaiming, unknown, or expired claims as still held; fail closed when the authority is unavailable.",
+      "line_refs": ["observer_analysis.py:220", "observer_analysis.py:778"]
+    },
+    {
+      "id": "pc-performance-probe",
+      "owner": "Project Control",
+      "files": [
+        {
+          "path": "src/project_control/services/performance_probe.py",
+          "sha256": "9fda247e594a20520e974c4eff1cfc5b65715a476b1d55007585e06074614efa",
+          "symbols": ["cuda_controller.py", "probe", "registered campaign"]
+        }
+      ],
+      "active_contract": "Execute registered GPU campaign through the legacy controller and retain campaign result/evidence",
+      "target": "Submit a bounded job using an operator-registered profile; keep Project Control campaign validation and evidence presentation",
+      "line_refs": ["performance_probe.py:143"]
+    },
+    {
+      "id": "pc-gpu-lab",
+      "owner": "Project Control",
+      "files": [
+        {
+          "path": "src/project_control/cli.py",
+          "inventory_sha256": "c1a07a9b6f506ed0bf0d40bba4c62f01f0cc54c551f8feda64f219ffc54121b1",
+          "sha256": "b3df490f33c1fe8d4c67346686421b5700533682ab45dbeac1a8c4cce6dc657b",
+          "symbols": ["cuda_controller.py", "GpuLabExecutor", "quiesce_for_foreground", "resume_after_foreground"]
+        },
+        {
+          "path": "src/project_control/assistance/lab_gpu.py",
+          "sha256": "bf49b190af83db6883a9cb6bd6b70d73bb1b8c33f1bf8706093dd9c21e62bc59",
+          "symbols": ["GpuLabExecutor", "native_owner_reader"]
+        }
+      ],
+      "active_contract": "Scoped GPU lab execution with scheduler-owner inspection, quiesce/resume callbacks, and controller execution",
+      "target": "Move GPU execution to a Device Scheduler job profile and report job/lease evidence; retain the lab UI and scientific checks; no implicit model-weight eviction",
+      "disposition": "requires a separately reviewed consumer patch; not implemented by this bridge"
+    },
+    {
+      "id": "pc-local-worker-campaign-discovery",
+      "owner": "Project Control",
+      "files": [
+        {
+          "path": "src/project_control/local_runtime/local_worker/controller.py",
+          "sha256": "cfcb005b19cbc02e0e7ae0d813fb9e4533699fe0d4a39894b93883de6ec47b50",
+          "symbols": ["cuda/scripts/cuda_controller.py", "registry", "discover"]
+        }
+      ],
+      "active_contract": "Invoke the CUDA controller registry discovery command as an integration utility",
+      "target": "Keep registry discovery read-only and local to the existing campaign registry or give it a standalone command; remove the controller CLI dependency",
+      "line_refs": ["controller.py:439"]
+    }
+  ],
+  "cutover_gates": [
+    "Resolve the exact deployed Project Control and controller runtime source fingerprints.",
+    "Reconcile or transfer all existing owners and reservations; no owner may be silently dropped.",
+    "Add and qualify the injected SDK bridge plus explicit backend/handoff migration patch.",
+    "Fence every old allocator admission path before enabling the DS consumer path.",
+    "Verify no migrated consumer can still write or grant through HostCoordinator or the old CUDA controller.",
+    "Verify Device Scheduler startup, recovery, owner queries, and ambiguous reclamation fail closed.",
+    "Retain reversible rollback material without enabling two allocators against the same pool."
+  ]
+}
