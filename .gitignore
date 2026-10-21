@@ -1,0 +1,10 @@
+# Local editor and operating-system artifacts
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Native Todo authority is local state; retain project.json as repository identity.
+.todo-orchestrator/*
+!.todo-orchestrator/project.json
