@@ -47,9 +47,10 @@ provision operator operator.token 100 \
   --actions \
     resources.list resources.capabilities \
     jobs.submit jobs.get jobs.list jobs.wait jobs.logs jobs.control \
-    leases.get leases.list \
+    leases.request leases.get leases.list leases.renew leases.release \
     backends.get backends.list \
-    handoffs.get handoffs.list schedules.get schedules.list \
+    handoffs.get handoffs.list schedules.get schedules.list schedules.put schedules.control \
+    events.publish \
     policies.explain policies.simulate \
     admin.status admin.reconcile admin.backup \
   --execution-root "$repo_root"

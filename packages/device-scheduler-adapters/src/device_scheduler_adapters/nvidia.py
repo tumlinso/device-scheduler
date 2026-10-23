@@ -1161,7 +1161,7 @@ class NvidiaAdapter:
                 "verified": False,
                 "state": "blocked",
                 "lease_id": parsed["lease_id"],
-                "fencing_token": current_token,
+                "fencing_token": parsed["fencing_token"],
                 "resource_ids": parsed["resource_ids"],
                 "operation_id": operation_id,
                 "reason": "external lease release requires a persisted baseline mapping",

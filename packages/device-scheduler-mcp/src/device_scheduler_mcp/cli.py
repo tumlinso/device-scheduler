@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -156,7 +157,11 @@ def _command_arguments(args: argparse.Namespace) -> tuple[str, dict[str, Any]]:
 
 
 def _load_service_config(path: Path | None) -> ServiceConfig:
-    return ServiceConfig.from_file(path) if path else ServiceConfig.default()
+    if path is not None:
+        return ServiceConfig.from_file(path)
+    config_root = Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))).expanduser()
+    installed = config_root / "device-scheduler" / "config.toml"
+    return ServiceConfig.from_file(installed) if installed.exists() else ServiceConfig.default()
 
 
 async def _run_client_command(config: ServiceConfig, operation: str, arguments: dict[str, Any]) -> dict[str, Any]:

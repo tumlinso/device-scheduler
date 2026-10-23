@@ -160,6 +160,18 @@ class LeaseState(str, Enum):
     EXPIRED = "expired"
 
 
+class LeaseUsage(str, Enum):
+    """How a lease may be consumed by a client.
+
+    ``external`` preserves the historical reservation contract and requires a
+    resource adapter that can independently verify reclamation. ``supervised``
+    leases are usable only by jobs launched and cleaned up by Device Scheduler.
+    """
+
+    EXTERNAL = "external"
+    SUPERVISED = "supervised"
+
+
 class JobState(str, Enum):
     QUEUED = "queued"
     BLOCKED = "blocked"
@@ -353,6 +365,7 @@ class ResourceRequest(JsonModel):
     idempotency_key: str | None = None
     schema_version: int = 1
     owner_context: Mapping[str, str] = field(default_factory=dict)
+    usage: LeaseUsage = LeaseUsage.EXTERNAL
 
     def __post_init__(self) -> None:
         identifier(self.request_id, "request_id")
@@ -363,6 +376,8 @@ class ResourceRequest(JsonModel):
         if self.idempotency_key is not None:
             identifier(self.idempotency_key, "idempotency_key")
         object.__setattr__(self, "owner_context", owner_context_mapping(self.owner_context))
+        if not isinstance(self.usage, LeaseUsage):
+            object.__setattr__(self, "usage", _enum(self.usage, LeaseUsage, "usage"))
         _version(self.schema_version)
 
 
@@ -438,6 +453,7 @@ class Lease(JsonModel):
     request_digest: str | None = None
     schema_version: int = 1
     owner_context: Mapping[str, str] = field(default_factory=dict)
+    usage: LeaseUsage = LeaseUsage.EXTERNAL
 
     def __post_init__(self) -> None:
         identifier(self.lease_id, "lease_id")
@@ -454,6 +470,8 @@ class Lease(JsonModel):
         if self.request_digest is not None:
             identifier(self.request_digest, "request_digest")
         object.__setattr__(self, "owner_context", owner_context_mapping(self.owner_context))
+        if not isinstance(self.usage, LeaseUsage):
+            object.__setattr__(self, "usage", _enum(self.usage, LeaseUsage, "usage"))
         _version(self.schema_version)
 
 

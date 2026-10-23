@@ -105,8 +105,17 @@ class DeviceSchedulerClient:
     async def release_lease(self, lease_id: str, **options: Any) -> dict[str, Any]:
         return await self.call("leases.release", {"lease_id": lease_id, **options})
 
-    async def submit_job(self, spec: JobSpec | Mapping[str, Any]) -> dict[str, Any]:
-        return await self.call("jobs.submit", {"spec": _as_mapping(spec)})
+    async def submit_job(
+        self, spec: JobSpec | Mapping[str, Any], *,
+        lease_id: str | None = None, fencing_token: int | None = None,
+    ) -> dict[str, Any]:
+        """Submit durable work, optionally using an owned supervised lease."""
+        arguments: dict[str, Any] = {"spec": _as_mapping(spec)}
+        if lease_id is not None:
+            arguments["lease_id"] = lease_id
+        if fencing_token is not None:
+            arguments["fencing_token"] = fencing_token
+        return await self.call("jobs.submit", arguments)
 
     async def get_job(self, job_id: str) -> dict[str, Any]:
         return await self.call("jobs.get", {"job_id": job_id})

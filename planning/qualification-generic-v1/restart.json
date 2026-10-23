@@ -1,0 +1,29 @@
+{
+  "marker": "generic-v1-restart-f5ace65774e94e5bb4d930b62526891d",
+  "job_id": "78af5d92-9c02-4efd-bd56-c0b9df3fc590",
+  "state": "passed",
+  "submitted_at": "2026-10-23T18:22:26.232420+00:00",
+  "attempt_id": "f69a113a-6afa-44ec-807c-53aab2193b35",
+  "invocation_id": "e9ba60fedc794d75a53965093279f236",
+  "unit": "device-scheduler-attempt-08443c08804faae1bfa2fea71d499f81.service",
+  "handle": {
+    "adapter_id": "systemd-user-unit",
+    "external_id": "device-scheduler-attempt-08443c08804faae1bfa2fea71d499f81.service",
+    "identity": "f69a113a-6afa-44ec-807c-53aab2193b35",
+    "metadata": {
+      "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-08443c08804faae1bfa2fea71d499f81.service",
+      "description": "Device Scheduler attempt f69a113a-6afa-44ec-807c-53aab2193b35",
+      "execution_root": "/home/tumlinson/.local/state/device-scheduler/executions",
+      "handle_version": 1,
+      "invocation_id": "e9ba60fedc794d75a53965093279f236",
+      "profile_id": null,
+      "profile_version": null
+    },
+    "started_at": "2026-10-23T18:22:26.608501Z"
+  },
+  "same_attempt_and_invocation_after_restart": true,
+  "cleanup_verified": true,
+  "physical_launch_count": 1,
+  "final_state": "succeeded",
+  "finished_at": "2026-10-23T18:22:47.263726+00:00"
+}

@@ -1,0 +1,22 @@
+{
+  "status": "applied",
+  "reason": "protect caller-owned supervised reservations from policy preemption",
+  "files": [
+    {
+      "path": "packages/device-scheduler-core/src/device_scheduler_core/application.py",
+      "before": "919a3d6d0d57a49b5a589f79b3677f960b4a73e25636d4e159714dd4edb9c75c",
+      "after": "2fae4b59e91f29e370f6e5c9efe775db5b011fbd38ca2d44d5d58eb144f465b3"
+    },
+    {
+      "path": "packages/device-scheduler-core/src/device_scheduler_core/policy.py",
+      "before": "0223fa740b94af3d0ad2c2d59a9371bc8f6336e02347f99130c6974b1ac824f9",
+      "after": "6f50cf544cc56e29c1880987e092b188e54f8ff61d8c4dee67b3469e881a19e8"
+    },
+    {
+      "path": "tests/test_application.py",
+      "before": "9e2e8870cb923bf2b68eb3f3aa47dd66baf4f09f377be23313daff54f57e0fef",
+      "after": "40995a0e2e8e98560e2b32af75aa355e3ec5a36f81e4de0c9cf6d596279c96a3"
+    }
+  ],
+  "legacy_fences": "recreated only at absent ephemeral registry paths; no database or owner rows changed"
+}

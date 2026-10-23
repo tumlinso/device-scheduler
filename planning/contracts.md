@@ -28,7 +28,7 @@ State changes are validated by core transitions. The API exposes desired state a
 | Family | Operations and required behavior |
 |---|---|
 | Discovery | List resources and capabilities; inspect resource/topology; obtain health and compatibility information. Read-only. |
-| Leases | Request bundle; inspect lease; renew within policy/grants; release; reconcile an uncertain release. Capacity is reusable only after required reclamation is verified. |
+| Leases | Request bundle; inspect lease; renew within policy/grants; release; reconcile an uncertain release. Capacity is reusable only after required reclamation is verified. `usage=external` requires a trusted adapter reclamation contract. CPU/memory `usage=supervised` leases are consumed only by `jobs.submit` bound with the lease ID and current fence; that job is launched with the exact grant through the supervised execution adapter. One queued/running job may attach at a time. Release/expiry cancels only when the declared interruption contract permits it, then requires terminal attempt cleanup evidence. An idle lease has no authorized physical work and may be released. Unmanaged client processes, PID attachment, and owner acknowledgements do not qualify as CPU/memory reclamation evidence. |
 | Jobs | Submit now or at a time; inspect; wait; stream/paginate bounded logs; cancel; request cooperative suspension/resume; inspect attempts; recover; retry only with authorization and restart-safety proof. |
 | Handoffs | Submit explicit authorized finite batch; inspect all phases/results; cancel under cleanup rules; request recovery of blocked restoration/delivery. Submission verifies a feasible round-trip reservation. Ordinary job suspension has no eviction effect. |
 | Schedules | Create/revise versioned interval or calendar schedule; inspect; pause/resume; cancel. Nominal occurrence IDs make creation idempotent. |
@@ -70,6 +70,8 @@ The built-in policy uses interactive preference, weighted per-client fairness, q
 The daemon authenticates loopback MCP clients and maps them to scoped principals. Stdio bridges authenticate to the daemon as clients and do not form a second authority. Separate grants control read, submit, lease ownership, profile invocation, backend registration/control, event publication, recovery, and administration. Agent/user identity propagates to job ownership and audit records.
 
 Protocol and persisted schemas use explicit versions. Old job/attempt records remain inspectable across upgrades; migrations are transactional and tested against backups. Public APIs report unsupported capabilities rather than omit a requested guarantee. Same-user cgroup supervision is documented as lifecycle/resource accounting, never hostile-code isolation.
+
+CPU and host-memory supervised leases provide atomic ledger admission plus per-job systemd cgroup ceilings. They do not preallocate physical memory, reserve CPU time against the OS, or contain unmanaged same-user processes. A client must run lease-backed work through Device Scheduler jobs; direct external consumers remain unsupported unless an adapter can independently prove their reclamation.
 
 ## DS-00 baseline: current host and consumer inventory
 

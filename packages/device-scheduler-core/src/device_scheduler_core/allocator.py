@@ -301,6 +301,9 @@ class ResourceAllocator:
         spec = request if isinstance(request, ResourceRequest) else ResourceRequest.from_dict(request)
         key = spec.idempotency_key or spec.request_id
         request_data = spec.to_dict()
+        # Adding the default usage must not change existing external-request digests.
+        if request_data.get("usage") == "external":
+            request_data.pop("usage", None)
 
         def create(tx: Any) -> dict[str, Any]:
             lease = self._allocate_lease_tx(tx, spec, request_data=request_data)
@@ -396,6 +399,7 @@ class ResourceAllocator:
             state=LeaseState.ACTIVE,
             request_digest=self._digest(request_data or request.to_dict()),
             owner_context=request.owner_context,
+            usage=request.usage,
         )
         record = lease.to_dict()
         record["exclusive_conflict_domains"] = sorted(exclusive_domains)
@@ -1670,7 +1674,7 @@ class ResourceAllocator:
     def _lease_model(record: Mapping[str, Any]) -> Lease:
         fields = (
             "lease_id", "owner_id", "allocations", "fencing_token", "expires_at",
-            "state", "request_digest", "schema_version", "owner_context",
+            "state", "request_digest", "schema_version", "owner_context", "usage",
         )
         return Lease.from_dict({key: record[key] for key in fields if key in record})
 

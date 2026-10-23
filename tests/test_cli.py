@@ -102,3 +102,21 @@ def test_serve_and_stdio_are_explicit_transport_entrypoints(monkeypatch, tmp_pat
     monkeypatch.setattr(cli, "DeviceSchedulerClient", FakeClient)
     assert cli.main(["--config", str(config), "mcpstdio"]) == 0
     assert len(forwarded) == 1
+
+
+def test_cli_uses_installed_user_configuration_by_default(tmp_path: Path, monkeypatch) -> None:
+    config_root = tmp_path / "config"
+    target = config_root / "device-scheduler" / "config.toml"
+    target.parent.mkdir(parents=True)
+    target.write_text("[server]\nport = 8777\n[auth]\ntoken_file = '/tmp/installed-operator.token'\n")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(config_root))
+    config = cli._load_service_config(None)
+    assert config.port == 8777
+    assert config.token_file == Path("/tmp/installed-operator.token")
+    explicit = _config_file(tmp_path)
+    assert cli._load_service_config(explicit).port == 8770
+
+
+def test_cli_without_installed_configuration_retains_defaults(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "absent"))
+    assert cli._load_service_config(None).port == 8770

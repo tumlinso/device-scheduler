@@ -564,3 +564,15 @@ def test_gpu_quiescence_precondition_blocks_busy_gpu_before_execution() -> None:
     assert receipt["state"] == "blocked"
     assert receipt["verified"] is False
     assert receipt["preconditions"][0]["state"] == "blocked"
+
+
+def test_external_gpu_release_missing_baseline_refuses_without_probe() -> None:
+    runner = FakeNvidia(gpu_output=GPU_A_IDLE)
+    adapter = NvidiaAdapter(runner=runner, hostname=lambda: "lab-host")
+    receipt = adapter.inspect_lease_release(
+        make_external_lease(fencing_token=12), None, (make_gpu_resource(),), operation_id="release:missing"
+    )
+    assert receipt["state"] == "blocked"
+    assert receipt["verified"] is False
+    assert receipt["fencing_token"] == 12
+    assert "baseline" in receipt["reason"]

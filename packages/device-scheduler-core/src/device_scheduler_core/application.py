@@ -39,6 +39,7 @@ from .models import (
     HandoffSpec,
     JobSpec,
     LeaseState,
+    LeaseUsage,
     Principal,
     PolicyDecision as SchedulerPolicyDecision,
     Resource,
@@ -358,7 +359,20 @@ class Scheduler:
             owner = self._owner_from_args(args, actor, "jobs.submit:any_owner")
             spec = self._prepare_job_spec(spec_raw, owner, actor)
             key = _idempotency_key(args, spec.idempotency_key)
-            return self.submit_job(spec.to_dict(), owner, key)
+            lease_id = args.get("lease_id")
+            if lease_id is not None and not isinstance(lease_id, str):
+                raise ValidationError("lease_id must be a string")
+            lease_fencing_token = args.get("fencing_token")
+            if lease_id is not None:
+                if isinstance(lease_fencing_token, bool) or not isinstance(lease_fencing_token, int):
+                    raise ValidationError("fencing_token is required and must be an integer when binding a lease")
+            elif lease_fencing_token is not None:
+                raise ValidationError("fencing_token requires lease_id")
+            return self.submit_job(
+                spec.to_dict(), owner, key,
+                lease_id=lease_id,
+                lease_fencing_token=lease_fencing_token,
+            )
         if operation == "jobs.get":
             job = self.get_job(_required(args, "job_id"))
             self._require_owner(job, actor, owner_key="owner", any_owner_action="jobs.read:any_owner")
@@ -523,18 +537,59 @@ class Scheduler:
         owner: str,
         key: str,
         reservation_id: str | None = None,
+        *,
+        lease_id: str | None = None,
+        lease_fencing_token: int | None = None,
     ) -> dict[str, Any]:
-        """Trusted callback used by schedules and handoffs to persist a job once."""
+        """Persist a job once, optionally binding it to a supervised client lease."""
         if not isinstance(spec, Mapping):
             raise ValidationError("job spec must be an object")
         normalized = dict(spec)
         normalized["owner_id"] = owner
         job_spec = JobSpec.from_dict(normalized)
+        if lease_id is not None:
+            if reservation_id is not None:
+                raise ValidationError("a job cannot bind both a lease and a reservation")
+            if lease_fencing_token is None:
+                raise ValidationError("a supervised lease binding requires its fencing token")
+            if job_spec.resources:
+                raise ValidationError("a job bound to a lease inherits its allocation; omit job-level resources")
+        elif lease_fencing_token is not None:
+            raise ValidationError("lease_fencing_token requires lease_id")
+        if lease_id is not None:
+            bound_lease = _plain_lease(self._get_lease(lease_id))
+            self._validate_supervised_lease_allocations(bound_lease)
         payload = {"spec": job_spec.to_dict(), "reservation_id": reservation_id}
+        if lease_id is not None:
+            payload.update(lease_id=lease_id, lease_fencing_token=lease_fencing_token)
         if not owner or not key:
             raise ValidationError("job owner and idempotency key are required")
 
         def create(tx: Any) -> dict[str, Any]:
+            if lease_id is not None:
+                lease = tx.get("lease", lease_id)
+                if lease is None:
+                    raise NotFoundError(f"lease {lease_id!r} does not exist")
+                if lease.get("usage", LeaseUsage.EXTERNAL.value) != LeaseUsage.SUPERVISED.value:
+                    raise UnsupportedCapabilityError("jobs can bind only to leases requested for supervised use")
+                if lease.get("owner_id") != owner:
+                    raise PermissionDeniedError("job owner must match the supervised lease owner")
+                if lease.get("state") != LeaseState.ACTIVE.value:
+                    raise ConflictError("supervised lease is not active")
+                if int(lease.get("fencing_token", 0)) != lease_fencing_token:
+                    raise ConflictError("supervised lease fencing token is stale")
+                if _parse_time(lease.get("expires_at"), "lease expires_at") <= _now(self.clock):
+                    raise ConflictError("supervised lease has expired")
+                existing_jobs = [
+                    item for item in tx.list("jobs")
+                    if item.get("lease_id") == lease_id
+                    and _state(item.get("state")) not in _TERMINAL
+                ]
+                if existing_jobs:
+                    raise ConflictError(
+                        "a supervised lease may have only one queued or running job at a time",
+                        details={"active_job_ids": [str(item.get("id", item.get("job_id"))) for item in existing_jobs]},
+                    )
             job_id = str(uuid.uuid4())
             validate_dependency_graph(tx, job_id, job_spec.dependencies)
             now = _now(self.clock)
@@ -551,15 +606,22 @@ class Scheduler:
                 "created_at": _iso(now),
                 "updated_at": _iso(now),
                 "attempt_id": None,
-                "lease_id": None,
-                "lease_fencing_token": None,
+                "lease_id": lease_id,
+                "lease_fencing_token": lease_fencing_token,
+                "lease_binding": "supervised" if lease_id is not None else None,
                 "reservation_id": reservation_id,
                 "result": None,
                 "cleanup_verified": False,
                 "blocked_reason": None if state == "queued" else "dependency_or_event_pending",
             }
             saved = tx.put("jobs", job_id, record, None)
-            tx.event("job.submitted", job_id, {"owner": owner, "state": state, "reservation_id": reservation_id})
+            tx.event("job.submitted", job_id, {
+                "owner": owner,
+                "state": state,
+                "reservation_id": reservation_id,
+                "lease_id": lease_id,
+                "lease_binding": "supervised" if lease_id is not None else None,
+            })
             return saved
 
         return self.ledger.idempotent(owner, key, "jobs.submit", payload, create)
@@ -633,7 +695,8 @@ class Scheduler:
             lease = self.allocator.request_lease(request)
             lease_record = _plain_lease(self._get_lease(str(lease.lease_id)))
             mode, _adapter, _resources = self._external_lease_reclamation_path(
-                tuple(ResourceAllocation.from_dict(item) for item in lease_record.get("allocations", ()))
+                tuple(ResourceAllocation.from_dict(item) for item in lease_record.get("allocations", ())),
+                usage=str(lease_record.get("usage", LeaseUsage.EXTERNAL.value)),
             )
             if mode is None:
                 raise ReconciliationRequiredError("existing external lease no longer has a trusted reclamation adapter")
@@ -654,7 +717,9 @@ class Scheduler:
             preview_allocations = tuple(preview(request.requirements))
         except ConflictError:
             raise
-        mode, adapter, _resources = self._external_lease_reclamation_path(preview_allocations)
+        mode, adapter, _resources = self._external_lease_reclamation_path(
+            preview_allocations, usage=request.usage.value
+        )
         if mode is None or adapter is None:
             raise UnsupportedCapabilityError(
                 "requested external lease has no trusted reclamation adapter; use a supervised job or managed backend"
@@ -662,7 +727,8 @@ class Scheduler:
         lease = self.allocator.request_lease(request)
         lease_record = _plain_lease(lease)
         actual_mode, actual_adapter, descriptors = self._external_lease_reclamation_path(
-            tuple(ResourceAllocation.from_dict(item) for item in lease_record.get("allocations", ()))
+            tuple(ResourceAllocation.from_dict(item) for item in lease_record.get("allocations", ())),
+            usage=str(lease_record.get("usage", LeaseUsage.EXTERNAL.value)),
         )
         if actual_mode != mode or actual_adapter is not adapter:
             # The placement preview is advisory. If a concurrent allocator
@@ -683,7 +749,7 @@ class Scheduler:
         return _json_value(lease)
 
     def _external_lease_reclamation_path(
-        self, allocations: Sequence[ResourceAllocation]
+        self, allocations: Sequence[ResourceAllocation], *, usage: str = LeaseUsage.EXTERNAL.value
     ) -> tuple[str | None, Any | None, tuple[Resource, ...]]:
         """Resolve a complete, single-adapter release contract for an external bundle."""
         if not allocations:
@@ -726,6 +792,10 @@ class Scheduler:
         )
         if adapter is None:
             return None, None, ()
+        if usage == LeaseUsage.SUPERVISED.value:
+            if not self._supports_supervised_lease(resources, source_id):
+                return None, None, ()
+            return "supervised", adapter, tuple(resources)
         if callable(getattr(adapter, "reclaim_lease", None)):
             return "reclaim", adapter, tuple(resources)
         gpu_only_exclusive = all(
@@ -739,6 +809,44 @@ class Scheduler:
         ):
             return "observe", adapter, tuple(resources)
         return None, None, ()
+
+    def _supports_supervised_lease(self, resources: Sequence[Resource], source_id: str) -> bool:
+        """Require host inventory plus the production supervised-job adapter."""
+        if source_id != "linux-host" or not resources:
+            return False
+        if any(
+            resource.kind.casefold() not in {"cpu", "memory", "host_memory", "ram"}
+            or "supervised-lease-job-only" not in resource.capabilities
+            for resource in resources
+        ):
+            return False
+        if self.executor is None or str(getattr(self.executor, "adapter_id", "")) != "systemd-user-unit":
+            return False
+        capabilities = getattr(self.executor, "capabilities", None)
+        if not callable(capabilities):
+            return False
+        try:
+            names = {
+                str(item.get("name")) if isinstance(item, Mapping) else str(getattr(item, "name", ""))
+                for item in capabilities()
+            }
+        except Exception:
+            return False
+        return {
+            "process-tree-cgroup-supervision",
+            "granted-resource-cgroup-limits",
+            "supervised-lease-job-binding",
+        }.issubset(names)
+
+    def _validate_supervised_lease_allocations(self, lease: Mapping[str, Any]) -> None:
+        allocations = tuple(ResourceAllocation.from_dict(item) for item in lease.get("allocations", ()))
+        mode, _adapter, resources = self._external_lease_reclamation_path(
+            allocations, usage=LeaseUsage.SUPERVISED.value
+        )
+        if mode != "supervised" or not resources:
+            raise UnsupportedCapabilityError(
+                "supervised leases require Linux CPU/memory resources and a systemd execution adapter"
+            )
 
     def _capture_external_lease_baseline(
         self, lease: Mapping[str, Any], adapter: Any, resources: Sequence[Resource]
@@ -824,7 +932,22 @@ class Scheduler:
         ttl = args.get("ttl_seconds")
         if ttl is None:
             raise ValidationError("ttl_seconds is required")
-        return _json_value(self.allocator.renew_lease(lease_id, fencing, ttl))
+        renewed = _json_value(self.allocator.renew_lease(lease_id, fencing, ttl))
+        if renewed.get("usage", LeaseUsage.EXTERNAL.value) == LeaseUsage.SUPERVISED.value:
+            # A queued job has not consumed the old fence yet; carry the renewed
+            # fence forward so its eventual execution context uses the current
+            # lease generation. Running attempts retain their launch fence.
+            with self.ledger.transaction() as tx:
+                for job in tx.list("jobs"):
+                    if (
+                        job.get("lease_id") == lease_id
+                        and job.get("lease_binding") == "supervised"
+                        and _state(job.get("state")) in {"queued", "blocked"}
+                    ):
+                        data = _without_revision(job)
+                        data["lease_fencing_token"] = renewed["fencing_token"]
+                        tx.put("jobs", str(job.get("id", job.get("job_id"))), data, job[_REVISION])
+        return renewed
 
     def _release_lease(self, args: Mapping[str, Any], actor: Principal) -> dict[str, Any]:
         lease_id = _required(args, "lease_id")
@@ -834,13 +957,11 @@ class Scheduler:
         lease_record = _plain_lease(lease)
         if lease_record.get("state") == LeaseState.RELEASED.value:
             return lease_record
-        linked_job = next(
-            (item for item in self.ledger.list("jobs") if item.get("lease_id") == lease_id),
-            None,
-        )
-        if linked_job is not None and not (
-            _state(linked_job.get("state")) in _TERMINAL
-            and linked_job.get("cleanup_verified") is True
+        linked_jobs = [item for item in self.ledger.list("jobs") if item.get("lease_id") == lease_id]
+        supervised = lease_record.get("usage", LeaseUsage.EXTERNAL.value) == LeaseUsage.SUPERVISED.value
+        if not supervised and any(
+            not (_state(item.get("state")) in _TERMINAL and item.get("cleanup_verified") is True)
+            for item in linked_jobs
         ):
             raise ConflictError("managed job resources are released only after verified job cleanup")
         linked_backend = next(
@@ -853,17 +974,35 @@ class Scheduler:
         token = int(requested["fencing_token"])
         lease_record = _plain_lease(self._get_lease(lease_id))
         receipt: Mapping[str, Any] | None = None
-        if linked_job and linked_job.get("cleanup_verified") is True:
+        if supervised:
+            receipt = self._reconcile_supervised_lease_jobs(
+                lease_record, token, owner=actor.principal_id
+            )
+            if receipt is not None:
+                operation_id = str(receipt.get("operation_id", ""))
+                if not _receipt_covers(receipt, lease_record, fencing_token=token, operation_id=operation_id):
+                    receipt = None
+        elif linked_jobs and all(
+            item.get("cleanup_verified") is True and _state(item.get("state")) in _TERMINAL
+            for item in linked_jobs
+        ):
             receipt = {
                 "verified": True,
                 "lease_id": lease_id,
                 "fencing_token": token,
                 "resource_ids": [item["resource_id"] for item in lease_record.get("allocations", [])],
-                "evidence": {"job_id": linked_job.get("id"), "attempt_id": linked_job.get("attempt_id")},
+                "evidence": {
+                    "jobs": [
+                        {"job_id": item.get("id", item.get("job_id")), "attempt_id": item.get("attempt_id")}
+                        for item in linked_jobs
+                    ]
+                },
             }
         else:
             allocations = tuple(ResourceAllocation.from_dict(item) for item in lease_record.get("allocations", ()))
-            mode, adapter, descriptors = self._external_lease_reclamation_path(allocations)
+            mode, adapter, descriptors = self._external_lease_reclamation_path(
+                allocations, usage=str(lease_record.get("usage", LeaseUsage.EXTERNAL.value))
+            )
             if mode == "observe" and adapter is not None:
                 candidate = self._observe_external_lease_release(
                     lease_record, adapter, descriptors, owner=actor.principal_id
@@ -897,10 +1036,111 @@ class Scheduler:
                 ):
                     receipt = candidate
         if receipt is None:
-            self.allocator.mark_unknown(lease_id, token, "no trusted adapter has verified resource reclamation")
+            self.allocator.mark_unknown(lease_id, token, "no trusted supervised-job or adapter evidence has verified resource reclamation")
             return _plain_lease(self._get_lease(lease_id))
         current = self.allocator.begin_reclamation(lease_id, token)
         return _json_value(self.allocator.verify_release(lease_id, int(current["fencing_token"]), receipt))
+
+    def _reconcile_supervised_lease_jobs(
+        self,
+        lease: Mapping[str, Any],
+        fencing_token: int,
+        *,
+        owner: str,
+    ) -> Mapping[str, Any] | None:
+        """Cancel/reconcile only scheduler-created attempts before releasing a supervised lease."""
+        lease_id = str(lease.get("lease_id", ""))
+        resource_ids = sorted(str(item["resource_id"]) for item in lease.get("allocations", ()))
+        jobs = [item for item in self.ledger.list("jobs") if item.get("lease_id") == lease_id]
+        operation_id = f"lease-release:{lease_id}:{fencing_token}"
+        intent = self._ensure_operation(
+            operation_id,
+            "lease.supervised_release",
+            {
+                "lease_id": lease_id,
+                "fencing_token": fencing_token,
+                "resource_ids": resource_ids,
+                "job_ids": sorted(str(item.get("id", item.get("job_id"))) for item in jobs),
+            },
+            owner,
+        )
+        if intent.get("status") == "complete":
+            receipt = intent.get("receipt") or {}
+            return receipt if _receipt_covers(receipt, lease, fencing_token=fencing_token, operation_id=operation_id) else None
+
+        for job in jobs:
+            job_id = str(job.get("id", job.get("job_id", "")))
+            current = self.get_job(job_id)
+            if _state(current.get("state")) in _TERMINAL and current.get("cleanup_verified") is True:
+                continue
+            try:
+                spec = JobSpec.from_dict(current.get("spec", {}))
+            except ValidationError:
+                self._record_operation(operation_id, {"state": "unknown", "reason": "bound job spec cannot be validated"}, status="unknown")
+                return None
+            if not spec.interruption.cancellation_supported:
+                self._record_operation(
+                    operation_id,
+                    {"state": "unknown", "reason": "bound job does not permit cancellation", "job_id": job_id},
+                    status="unknown",
+                )
+                return None
+            try:
+                observed = self.cancel_job(job_id, reason=f"lease_release:{operation_id}")
+            except Exception as exc:
+                observed = {"state": "unknown", "cleanup_verified": False, "error": type(exc).__name__}
+            if _state(observed.get("state")) not in _TERMINAL or observed.get("cleanup_verified") is not True:
+                self._record_operation(
+                    operation_id,
+                    {"state": "unknown", "reason": "attached job cleanup remains unverified", "job_id": job_id},
+                    status="unknown",
+                )
+                return None
+
+        # Check every job and attempt record; the high-level job flag alone is
+        # not enough if a launch or cleanup attempt is still ambiguous.
+        evidence: list[dict[str, Any]] = []
+        for raw in jobs:
+            job_id = str(raw.get("id", raw.get("job_id", "")))
+            current = self.get_job(job_id)
+            if _state(current.get("state")) not in _TERMINAL or current.get("cleanup_verified") is not True:
+                self._record_operation(
+                    operation_id,
+                    {"state": "unknown", "reason": "attached job is not terminal with verified cleanup", "job_id": job_id},
+                    status="unknown",
+                )
+                return None
+            attempt_id = current.get("attempt_id")
+            if attempt_id:
+                attempt = self.ledger.get("attempts", str(attempt_id))
+                if attempt is None or attempt.get("cleanup_verified") is not True or _state(attempt.get("state")) == "unknown":
+                    self._record_operation(
+                        operation_id,
+                        {"state": "unknown", "reason": "attached attempt cleanup receipt is unavailable", "job_id": job_id},
+                        status="unknown",
+                    )
+                    return None
+            evidence.append({
+                "job_id": job_id,
+                "attempt_id": attempt_id,
+                "state": _state(current.get("state")),
+                "cleanup_verified": True,
+            })
+
+        receipt = {
+            "verified": True,
+            "lease_id": lease_id,
+            "fencing_token": fencing_token,
+            "resource_ids": resource_ids,
+            "operation_id": operation_id,
+            "evidence": {
+                "mode": "scheduler-supervised-jobs-only",
+                "jobs": evidence,
+                "no_unmanaged_process_isolation_claim": True,
+            },
+        }
+        self._record_operation(operation_id, receipt, status="complete")
+        return receipt
 
     def _observe_external_lease_release(
         self,
@@ -990,6 +1230,34 @@ class Scheduler:
                 (item for item in self.ledger.list("jobs") if item.get("lease_id") == lease_id),
                 None,
             )
+            if lease.get("usage", LeaseUsage.EXTERNAL.value) == LeaseUsage.SUPERVISED.value:
+                token = int(lease["fencing_token"])
+                receipt = self._reconcile_supervised_lease_jobs(
+                    lease, token, owner=str(lease.get("owner_id", "scheduler"))
+                )
+                if receipt is None or not _receipt_covers(receipt, lease, fencing_token=token, operation_id=str(receipt.get("operation_id", ""))):
+                    self.allocator.mark_unknown(
+                        lease_id, token, "expired supervised lease jobs are not all verified clean"
+                    )
+                    outcomes.append({
+                        "lease_id": lease_id,
+                        "state": LeaseState.UNKNOWN.value,
+                        "reason": "supervised_job_cleanup_unverified",
+                    })
+                    continue
+                try:
+                    reclamation = self.allocator.begin_reclamation(lease_id, token)
+                    released = self.allocator.verify_release(
+                        lease_id, int(reclamation["fencing_token"]), receipt
+                    )
+                    outcomes.append({
+                        "lease_id": lease_id,
+                        "state": _state(released.get("state")),
+                        "operation_id": receipt.get("operation_id"),
+                    })
+                except Exception as exc:
+                    outcomes.append({"lease_id": lease_id, "state": "unknown", "error": type(exc).__name__})
+                continue
             if linked_job is not None:
                 if linked_job.get("cleanup_verified") is True and _state(linked_job.get("state")) in _TERMINAL:
                     try:
@@ -1010,7 +1278,9 @@ class Scheduler:
                 continue
 
             allocations = tuple(ResourceAllocation.from_dict(item) for item in lease.get("allocations", ()))
-            mode, adapter, descriptors = self._external_lease_reclamation_path(allocations)
+            mode, adapter, descriptors = self._external_lease_reclamation_path(
+                allocations, usage=str(lease.get("usage", LeaseUsage.EXTERNAL.value))
+            )
             if mode is None or adapter is None:
                 outcomes.append({"lease_id": lease_id, "state": state, "reason": "no_matching_reclamation_adapter"})
                 continue
@@ -1075,7 +1345,9 @@ class Scheduler:
     def _lease_reclamation_adapters(self, lease: Mapping[str, Any]) -> list[Any]:
         """Select one adapter with a complete trusted release contract."""
         allocations = tuple(ResourceAllocation.from_dict(item) for item in lease.get("allocations", ()))
-        _mode, adapter, _resources = self._external_lease_reclamation_path(allocations)
+        _mode, adapter, _resources = self._external_lease_reclamation_path(
+            allocations, usage=str(lease.get("usage", LeaseUsage.EXTERNAL.value))
+        )
         return [adapter] if adapter is not None else []
 
     def _prepare_job_spec(self, raw: Any, owner: str, actor: Principal | None) -> JobSpec:
@@ -2135,11 +2407,29 @@ class Scheduler:
             return None
         spec = JobSpec.from_dict(current["spec"])
         lease: Mapping[str, Any] | None = None
+        bound_lease_id = current.get("lease_id") if current.get("lease_binding") == "supervised" else None
         reservation_id = current.get("reservation_id")
         phase_id = f"job-phase:{job_id}"
         if reservation_id:
             self._require_live_reservation(str(reservation_id))
-        if spec.resources:
+        if bound_lease_id:
+            lease = _plain_lease(self._get_lease(str(bound_lease_id)))
+            if lease.get("usage", LeaseUsage.EXTERNAL.value) != LeaseUsage.SUPERVISED.value:
+                raise ConflictError("bound lease is not declared for supervised use")
+            if lease.get("state") != LeaseState.ACTIVE.value:
+                raise ConflictError("bound supervised lease is no longer active")
+            if int(lease.get("fencing_token", 0)) != int(current.get("lease_fencing_token") or 0):
+                raise ConflictError(
+                    "bound supervised lease is no longer at the submitted fencing token",
+                    details={
+                        "lease_fencing_token": lease.get("fencing_token"),
+                        "job_fencing_token": current.get("lease_fencing_token"),
+                    },
+                )
+            if spec.resources:
+                raise ValidationError("a job bound to a lease inherits its allocation; omit job-level resources")
+            self._validate_supervised_lease_allocations(lease)
+        elif spec.resources:
             if reservation_id:
                 phase = self.allocator.phase_lease(reservation_id, phase_id, spec.resources)
                 lease = {"lease_id": None, "fencing_token": None, "reservation_phase_id": phase_id, "reservation_id": reservation_id, "allocations": phase.get("allocations", [])}
@@ -2773,6 +3063,8 @@ class Scheduler:
         target = self.ledger.get("jobs", target_id)
         if requester is None or target is None or _state(requester.get("state")) not in {"queued", "blocked"}:
             return False
+        if target.get("lease_binding") == "supervised":
+            return False  # The caller's reserved lease is not policy-owned capacity.
         if not self._preemption_would_unblock(JobSpec.from_dict(requester["spec"]), target):
             return False
         if target.get("attempt_id") != attempt_id or target.get("lease_id") != lease_id:
@@ -2816,6 +3108,7 @@ class Scheduler:
             spec = JobSpec.from_dict(target["spec"])
             if (
                 target.get("reservation_id")
+                or target.get("lease_binding") == "supervised"
                 or spec.priority_class != "background"
                 or not spec.interruption.restart_safe
                 or not spec.interruption.cancellation_supported
@@ -2997,6 +3290,11 @@ class Scheduler:
                 tx.put("jobs", job_id, job_data, job[_REVISION])
 
     def _release_job_lease(self, job: Mapping[str, Any], receipt: Mapping[str, Any]) -> None:
+        if job.get("lease_binding") == "supervised":
+            # The caller owns this lease beyond the attached job. The job's
+            # systemd cleanup receipt is retained on its attempt and is later
+            # consumed by explicit lease release or expiry reconciliation.
+            return
         phase_id = job.get("reservation_phase_id")
         reservation_id = job.get("reservation_id")
         if phase_id and reservation_id:
@@ -3364,7 +3662,18 @@ class Scheduler:
                     "bundle": "GPU-only and single-adapter",
                     "release": "repeatable read-only quiescence and baseline verification",
                 },
-                "unsupported_without_a_trusted_reclamation_adapter": ["cpu", "memory", "mixed-adapter bundles"],
+                "supervised_cpu_memory_constraints": {
+                    "consumption": "jobs.submit with lease_id and current fencing_token",
+                    "binding": "systemd unit launched with the exact lease ExecutionContext",
+                    "concurrency": "one queued or running job per lease",
+                    "unmanaged_processes": "unsupported; same-user cgroups are not hostile-code isolation",
+                    "cpu_memory_semantics": "ledger admission plus per-job cgroup ceilings; not physical reservation",
+                },
+                "unsupported_without_a_trusted_reclamation_adapter": [
+                    "unmanaged cpu leases",
+                    "unmanaged memory leases",
+                    "mixed-adapter bundles",
+                ],
             },
         }
 
@@ -3396,6 +3705,20 @@ class Scheduler:
         if adapter is not None and callable(getattr(adapter, "reclaim_lease", None)):
             return {"supported": True, "mode": "trusted_adapter_reclamation", "adapter_id": adapter_id}
         kind = str(resource_data.get("kind", "")).casefold()
+        if kind in {"cpu", "memory", "host_memory", "ram"}:
+            try:
+                resource = Resource.from_dict(resource_data)
+            except ValidationError:
+                return {"supported": False, "reason": "resource_descriptor_invalid"}
+            if self._supports_supervised_lease((resource,), str(adapter_id)):
+                return {
+                    "supported": True,
+                    "mode": "scheduler_supervised_jobs_only",
+                    "usage": LeaseUsage.SUPERVISED.value,
+                    "adapter_id": adapter_id,
+                    "unmanaged_consumers": "unsupported",
+                    "enforcement": "per-job systemd cgroup ceilings; host admission is ledger accounting",
+                }
         if (
             kind in _GPU_KINDS
             and adapter is not None

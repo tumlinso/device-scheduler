@@ -1,0 +1,120 @@
+{
+  "source_commit_before": "d4bb42acbb088395a2ede3e8724f984641d4898e",
+  "backup_directory": "/home/tumlinson/.local/state/device-scheduler/backups/generic-v1-20261023T181052Z",
+  "files": [
+    {
+      "path": "deploy/provision-production-principals.sh",
+      "before": "e9d4155e4e712f4b0d414fbef5c58b3cdb428bacc4b637b03f72391467bf80ac",
+      "after": "946cf84bfe52380850962842e4acf0fc26ba66e262e77c51151819441088c0be",
+      "mode": 448
+    },
+    {
+      "path": "packages/device-scheduler-adapters/src/device_scheduler_adapters/host.py",
+      "before": "9fc1b41de1600ce8be4554cf548b130bb46fdba065445722dc234554070bab59",
+      "after": "7d339d706f1433c6f51e62634409096efcbc79c82216d5d5367181edd58d6c53",
+      "mode": 436
+    },
+    {
+      "path": "packages/device-scheduler-adapters/src/device_scheduler_adapters/nvidia.py",
+      "before": "962d03510a4badfbcb2e351b8b2090a7fb7da1a54600eecfe5de016c3fdadb11",
+      "after": "184da58e21919afd90643615eafb2c694e7991843a9a63960c099f07fbe52a9c",
+      "mode": 436
+    },
+    {
+      "path": "packages/device-scheduler-adapters/src/device_scheduler_adapters/systemd.py",
+      "before": "6839cfd72665ea3e117afe07b48aca2d20b0362d59b72c80f25462c079238276",
+      "after": "919e450cfedd86ff1f2424971234462bad40fc45afd876999b8066e77c1aa85a",
+      "mode": 436
+    },
+    {
+      "path": "packages/device-scheduler-core/src/device_scheduler_core/__init__.py",
+      "before": "cb950df8163d657f2f2957e271215b7243b85c6c2f2d37e8ec04775d4c559b6b",
+      "after": "26bb8f4e4a116f66e4463c70e6066f91cf14357d54d8b2e013b17a0ae9ad2523",
+      "mode": 436
+    },
+    {
+      "path": "packages/device-scheduler-core/src/device_scheduler_core/allocator.py",
+      "before": "57763fced20443e43542502b473e71b262af37207a976d02d8654d6651287908",
+      "after": "7e849ebc3485d0acc8afa9540d9a6822c7b59751d39e4dd503dd586176b5b066",
+      "mode": 436
+    },
+    {
+      "path": "packages/device-scheduler-core/src/device_scheduler_core/application.py",
+      "before": "18c0a6377b501f724225ad9b15cfe14b5b7f9f1eb7e81a8cb0e80a57590b6ed8",
+      "after": "919a3d6d0d57a49b5a589f79b3677f960b4a73e25636d4e159714dd4edb9c75c",
+      "mode": 436
+    },
+    {
+      "path": "packages/device-scheduler-core/src/device_scheduler_core/models.py",
+      "before": "41c901f139ec2c0d58c4ecfa8d29274142eb4be7b17046cb746235f78d27fb2b",
+      "after": "83fb3d2c9786e15446903e128a19b6726b691118fab83855b97cb5a434b8b081",
+      "mode": 436
+    },
+    {
+      "path": "packages/device-scheduler-core/src/device_scheduler_core/ports.py",
+      "before": "a4972b5e22c15eeed00c19755dd66af6e0088b4b62a98fe9bc66aaefcb2aa30f",
+      "after": "89c00d810afa498650d91c21e26676e5152a38a29ba32433d71ddceb677d42f6",
+      "mode": 436
+    },
+    {
+      "path": "packages/device-scheduler-mcp/src/device_scheduler_mcp/cli.py",
+      "before": "8a9b64c1582aea72776a785925869c505b89d333939bdd8ebdac8d0aaf570d63",
+      "after": "4bc97d85b1d0a013cb9f27e0965f5091bc4e25f5d79661f88acd3452a74f6d51",
+      "mode": 436
+    },
+    {
+      "path": "packages/device-scheduler-mcp/src/device_scheduler_mcp/client.py",
+      "before": "fb5c3645ae67d525768b89c43915333646713ca2f3df4483d2e4976cc0c0b1c6",
+      "after": "bd1a8f4160d3d43a377452f636ae307aa082d0418dbd5b63f792e48604827da5",
+      "mode": 436
+    },
+    {
+      "path": "planning/contracts.md",
+      "before": "2b3ab3093764249afe474613ff87d14b7b6e0ab10b1550a240e39646bf2c6e56",
+      "after": "33e2af100352526288f0810388fcce008733191392f1dc1df29f396ace3c6da5",
+      "mode": 436
+    },
+    {
+      "path": "planning/product-spec.md",
+      "before": "0569c1ef3ff26f15755a37595a1124f362d83675746e6ba323e6b461f3d98130",
+      "after": "b08d060ab1080204c8c43d20739f4ee45bedbc08d9be21abbd275e2e609f85b4",
+      "mode": 436
+    },
+    {
+      "path": "scripts/qualify_generic_v1.py",
+      "before": null,
+      "after": "97b5b4dbf1e5344867beb98abb2dd47f566a0b8df85c2d8a29ae16924edb8b74",
+      "mode": 436
+    },
+    {
+      "path": "scripts/upgrade-generic-principal.py",
+      "before": null,
+      "after": "a47a84e44586e2e291a3423fcfc18cdcb55b731773cb024e65543c25dae95103",
+      "mode": 436
+    },
+    {
+      "path": "tests/test_application.py",
+      "before": "688406294dbaf6ffe4b21920b20daa69a021fbd38c0bb513640d8ff511689c95",
+      "after": "9e2e8870cb923bf2b68eb3f3aa47dd66baf4f09f377be23313daff54f57e0fef",
+      "mode": 436
+    },
+    {
+      "path": "tests/test_cli.py",
+      "before": "40e462df76b35148fa13e86b03f99348952fd7b6259ec43a42083b5c0c33f817",
+      "after": "8cb33721e0f7e0d37b5b2d650b8d8800b5de397cd9992e31cfab8e7f583db766",
+      "mode": 436
+    },
+    {
+      "path": "tests/test_client.py",
+      "before": "d2ac70f8461330e6f447f56349e4dfa3eb61540df3be49e53f311524689ec9d4",
+      "after": "e33be00649c544c0d5a9a19cbf36ecbb337c5dbb903128ee9702099417c6ddc5",
+      "mode": 436
+    },
+    {
+      "path": "tests/test_nvidia.py",
+      "before": "7ea450bdb004d9cfca7a4e9c33e019a0478403eee0c4564d33dc07b6708ab72c",
+      "after": "c28a8592ef49abeb4d4aa4714c744c61c539d3b14b57e143a1fb94a8bceb197b",
+      "mode": 436
+    }
+  ]
+}

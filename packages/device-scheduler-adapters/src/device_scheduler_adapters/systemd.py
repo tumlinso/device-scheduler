@@ -232,6 +232,18 @@ class SystemdExecutionAdapter:
                 },
             ),
             AdapterCapability(
+                "supervised-lease-job-binding",
+                True,
+                EnforcementLevel.ADVISORY,
+                {
+                    **detail,
+                    "input": "the execution context from the current active lease fence",
+                    "cleanup": "exact unit invocation and cgroup cleanup receipt",
+                    "supported_resources": ["cpu", "memory"],
+                    "unmanaged_processes": "unsupported; same-user cgroups are not hostile-code isolation",
+                },
+            ),
+            AdapterCapability(
                 "grant-bound-cuda-visible-devices",
                 True,
                 EnforcementLevel.ADVISORY,

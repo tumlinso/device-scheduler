@@ -19,7 +19,14 @@ from device_scheduler_core.errors import (
     UnsupportedCapabilityError,
     ValidationError,
 )
-from device_scheduler_core.models import ExecutionContext, ExecutionHandle, Principal, Resource
+from device_scheduler_core.models import (
+    AdapterCapability,
+    EnforcementLevel,
+    ExecutionContext,
+    ExecutionHandle,
+    Principal,
+    Resource,
+)
 
 
 NOW = datetime(2026, 10, 21, 12, 0, tzinfo=timezone.utc)
@@ -99,6 +106,46 @@ class FakeExecutor:
     def cancel(self, handle: ExecutionHandle, *, operation_id: str, timeout_seconds: float) -> Mapping[str, Any]:
         self.state = "cancelled"
         return {"state": "cancelled", "cleanup_verified": True, "operation_id": operation_id}
+
+
+class LeaseBoundFakeExecutor(FakeExecutor):
+    adapter_id = "systemd-user-unit"
+
+    def capabilities(self) -> list[AdapterCapability]:
+        return [
+            AdapterCapability(name, True, EnforcementLevel.ADVISORY, {})
+            for name in (
+                "process-tree-cgroup-supervision",
+                "granted-resource-cgroup-limits",
+                "supervised-lease-job-binding",
+            )
+        ]
+
+
+class UnverifiedCancelFakeExecutor(LeaseBoundFakeExecutor):
+    def cancel(self, handle: ExecutionHandle, *, operation_id: str, timeout_seconds: float) -> Mapping[str, Any]:
+        return {"state": "unknown", "cleanup_verified": False, "operation_id": operation_id}
+
+
+class HostLeaseResourceAdapter:
+    api_version = "1"
+    adapter_id = "linux-host"
+
+    def __init__(self) -> None:
+        capability = frozenset({"supervised-lease-job-only", "systemd-cgroup-request-dependent"})
+        self.resources = [
+            Resource("host:local:cpu", "host:local", "cpu", {"cores": 4}, capabilities=capability),
+            Resource("host:local:memory", "host:local", "memory", {"bytes": 8 * 1024**3}, capabilities=capability),
+        ]
+
+    def snapshot(self) -> Mapping[str, Any]:
+        return {"state": "observed", "resources": self.resources}
+
+    def discover(self) -> list[Resource]:
+        return list(self.resources)
+
+    def inspect(self, resource_id: str) -> Resource | None:
+        return next((item for item in self.resources if item.resource_id == resource_id), None)
 
 
 class SimulatedProcessCrash(BaseException):
@@ -348,14 +395,20 @@ class BlockingInventory:
         }
 
 
-def _scheduler(tmp_path: Path, *, executor: Any | None = None, adapters: tuple[Any, ...] = ()) -> Scheduler:
+def _scheduler(
+    tmp_path: Path,
+    *,
+    executor: Any | None = None,
+    adapters: tuple[Any, ...] = (),
+    clock: Any | None = None,
+) -> Scheduler:
     ledger = Ledger(tmp_path / "ledger.sqlite3")
     return Scheduler(
         ledger,
-        ResourceAllocator(ledger),
+        ResourceAllocator(ledger, clock=clock.now if clock is not None else None),
         executor=executor,
         resource_adapters=adapters,
-        clock=FakeClock(),
+        clock=clock or FakeClock(),
         config=SchedulerConfig(
             state_root=tmp_path / "state",
             execution_root=tmp_path / "executions",
@@ -846,6 +899,196 @@ def test_external_cpu_lease_without_trusted_reclamation_is_refused_before_grant(
     assert scheduler.allocator.can_allocate([{"kind": "cpu", "quantities": {"cores": 1}}]) is True
 
 
+def _request_supervised_host_lease(
+    scheduler: Scheduler,
+    principal: Principal,
+    *,
+    key: str = "lease:supervised",
+    ttl: int = 600,
+    mode: str = "shared",
+) -> dict[str, Any]:
+    return scheduler.dispatch(
+        "leases.request",
+        {
+            "idempotency_key": key,
+            "request": {
+                "request_id": key,
+                "requirements": [
+                    {"kind": "cpu", "quantities": {"cores": 1}, "mode": mode},
+                    {"kind": "memory", "quantities": {"bytes": 1024**2}, "mode": mode},
+                ],
+                "lease_ttl_seconds": ttl,
+                "usage": "supervised",
+            },
+        },
+        principal,
+    )
+
+
+@pytest.mark.parametrize("mode", ["shared", "exclusive"])
+def test_supervised_cpu_memory_lease_binds_one_job_and_remains_owned_after_job_cleanup(
+    tmp_path: Path, mode: str
+) -> None:
+    executor = LeaseBoundFakeExecutor()
+    scheduler = _scheduler(tmp_path, executor=executor, adapters=(HostLeaseResourceAdapter(),))
+    principal = _principal(
+        "leases.request", "leases.renew", "leases.release", "jobs.submit",
+        roots=(tmp_path,),
+    )
+    lease = _request_supervised_host_lease(scheduler, principal, mode=mode)
+    assert lease["usage"] == "supervised"
+    assert scheduler._get_lease(lease["lease_id"]).to_dict()["usage"] == "supervised"
+
+    submitted = scheduler.dispatch(
+        "jobs.submit",
+        {
+            **_job_args(tmp_path, key="job:lease-bound"),
+            "lease_id": lease["lease_id"],
+            "fencing_token": lease["fencing_token"],
+        },
+        principal,
+    )
+    assert submitted["lease_id"] == lease["lease_id"]
+    assert submitted["lease_binding"] == "supervised"
+
+    with pytest.raises(ConflictError, match="only one queued or running job"):
+        scheduler.dispatch(
+            "jobs.submit",
+            {
+                **_job_args(tmp_path, key="job:lease-bound-2"),
+                "lease_id": lease["lease_id"],
+                "fencing_token": lease["fencing_token"],
+            },
+            principal,
+        )
+
+    tick_result = scheduler.tick()
+    assert len(executor.contexts) == 1, {
+        "tick": tick_result,
+        "job": scheduler.get_job(submitted["job_id"]),
+        "lease": scheduler.allocator.get_lease(lease["lease_id"]).to_dict(),
+        "initial_lease": lease,
+    }
+    context = next(iter(executor.contexts.values()))
+    assert context.claim_id == lease["lease_id"]
+    assert context.fencing_token == lease["fencing_token"]
+    assert {item.resource_id for item in context.resources} == {
+        "host:local:cpu", "host:local:memory",
+    }
+    scheduler.tick()
+    assert scheduler.allocator.get_lease(lease["lease_id"]).state.value == "active"
+    assert scheduler.get_job(submitted["job_id"])["cleanup_verified"] is True
+
+    renewed = scheduler.dispatch(
+        "leases.renew",
+        {"lease_id": lease["lease_id"], "fencing_token": lease["fencing_token"], "ttl_seconds": 900},
+        principal,
+    )
+    assert renewed["state"] == "active"
+    released = scheduler.dispatch(
+        "leases.release",
+        {"lease_id": lease["lease_id"], "fencing_token": renewed["fencing_token"]},
+        principal,
+    )
+    assert released["state"] == "released"
+    assert released["release_receipt"]["evidence"]["mode"] == "scheduler-supervised-jobs-only"
+
+
+def test_supervised_lease_release_cancels_attached_job_and_holds_unknown_cleanup(tmp_path: Path) -> None:
+    executor = UnverifiedCancelFakeExecutor()
+    executor.state = "running"
+    scheduler = _scheduler(tmp_path, executor=executor, adapters=(HostLeaseResourceAdapter(),))
+    principal = _principal(
+        "leases.request", "leases.release", "jobs.submit",
+        roots=(tmp_path,),
+    )
+    lease = _request_supervised_host_lease(scheduler, principal, key="lease:unclean")
+    submitted = scheduler.dispatch(
+        "jobs.submit",
+        {
+            **_job_args(tmp_path, key="job:unclean"),
+            "lease_id": lease["lease_id"],
+            "fencing_token": lease["fencing_token"],
+        },
+        principal,
+    )
+    scheduler.tick()
+    released = scheduler.dispatch(
+        "leases.release",
+        {"lease_id": lease["lease_id"], "fencing_token": lease["fencing_token"]},
+        principal,
+    )
+    assert released["state"] == "unknown"
+    assert scheduler.get_job(submitted["job_id"])["cleanup_verified"] is False
+    assert scheduler.allocator.can_allocate([{"kind": "cpu", "quantities": {"cores": 4}}]) is False
+
+
+def test_supervised_lease_rejects_stale_fence_and_gpu_or_unmanaged_use(tmp_path: Path) -> None:
+    executor = LeaseBoundFakeExecutor()
+    scheduler = _scheduler(tmp_path, executor=executor, adapters=(HostLeaseResourceAdapter(),))
+    principal = _principal(
+        "leases.request", "jobs.submit", roots=(tmp_path,),
+    )
+    lease = _request_supervised_host_lease(scheduler, principal, key="lease:stale")
+    with pytest.raises(ConflictError, match="fencing token is stale"):
+        scheduler.dispatch(
+            "jobs.submit",
+            {
+                **_job_args(tmp_path, key="job:stale"),
+                "lease_id": lease["lease_id"],
+                "fencing_token": lease["fencing_token"] + 1,
+            },
+            principal,
+        )
+    with pytest.raises(ValidationError, match="inherits its allocation"):
+        scheduler.dispatch(
+            "jobs.submit",
+            {
+                **_job_args(
+                    tmp_path,
+                    key="job:resource-override",
+                    resources=[{"kind": "cpu", "quantities": {"cores": 1}}],
+                ),
+                "lease_id": lease["lease_id"],
+                "fencing_token": lease["fencing_token"],
+            },
+            principal,
+        )
+
+
+def test_expired_supervised_lease_cancels_bound_job_before_releasing_capacity(tmp_path: Path) -> None:
+    clock = MutableClock()
+    executor = LeaseBoundFakeExecutor()
+    executor.state = "running"
+    scheduler = _scheduler(
+        tmp_path, executor=executor, adapters=(HostLeaseResourceAdapter(),), clock=clock
+    )
+    principal = _principal(
+        "leases.request", "jobs.submit", roots=(tmp_path,),
+    )
+    lease = _request_supervised_host_lease(
+        scheduler, principal, key="lease:expires", ttl=10
+    )
+    submitted = scheduler.dispatch(
+        "jobs.submit",
+        {
+            **_job_args(tmp_path, key="job:expires"),
+            "lease_id": lease["lease_id"],
+            "fencing_token": lease["fencing_token"],
+        },
+        principal,
+    )
+    scheduler.tick()
+    assert scheduler.get_job(submitted["job_id"])["state"] == "running"
+
+    clock.advance(11)
+    result = scheduler.tick()
+
+    assert scheduler.get_job(submitted["job_id"])["state"] == "cancelled"
+    assert scheduler.allocator.get_lease(lease["lease_id"]).state.value == "released"
+    assert result["reconciled_expired_leases"][0]["state"] == "released"
+
+
 def test_external_gpu_lease_uses_persisted_baseline_and_repeatable_release_observation(tmp_path: Path) -> None:
     adapter = ObservedGpuAdapter(release_states=("blocked", "reclaimed"))
     scheduler = _scheduler(tmp_path, adapters=(adapter,))
@@ -1308,3 +1551,52 @@ def test_external_gpu_capability_advertises_budget_after_observed_headroom(tmp_p
     capability = scheduler._external_resource_lease_capability(resource.to_dict())
     assert capability["admission_memory_bytes"] == 6_300_000_000
     assert capability["required_allocation_mode"] == "exclusive"
+
+
+def test_pre_upgrade_job_idempotency_record_replays_unchanged(tmp_path: Path) -> None:
+    from device_scheduler_core.models import JobSpec
+    scheduler = _scheduler(tmp_path)
+    spec = JobSpec(owner_id="agent:one", argv=("/bin/true",), working_directory=str(tmp_path))
+    payload = {"spec": spec.to_dict(), "reservation_id": None}
+    prior = {"id": "legacy-job", "owner": "agent:one", "state": "queued", "spec": spec.to_dict()}
+    scheduler.ledger.idempotent("agent:one", "legacy-job-key", "jobs.submit", payload, lambda tx: prior)
+    assert scheduler.submit_job(spec.to_dict(), "agent:one", "legacy-job-key")["id"] == "legacy-job"
+
+
+def test_pre_upgrade_external_lease_idempotency_record_replays_unchanged(tmp_path: Path) -> None:
+    from device_scheduler_core.models import ResourceRequest, ResourceRequirement
+    scheduler = _scheduler(tmp_path)
+    scheduler.allocator.reconcile_resource_inventory("legacy", [Resource("cpu:test", "host:test", "cpu", {"cores": 1})])
+    request = ResourceRequest("legacy-request", "agent:one", (ResourceRequirement("cpu", {"cores": .25}),), 120)
+    legacy_payload = request.to_dict()
+    legacy_payload.pop("usage")
+    def old_create(tx):
+        result = scheduler.allocator._allocate_lease_tx(tx, request, request_data=legacy_payload).to_dict()
+        result.pop("usage")
+        return result
+    old = scheduler.ledger.idempotent("agent:one", "legacy-request", "request_lease", legacy_payload, old_create)
+    assert scheduler.allocator.request_lease(request).lease_id == old["lease_id"]
+
+
+def test_policy_cannot_preempt_a_caller_owned_supervised_lease(tmp_path: Path) -> None:
+    executor = LeaseBoundFakeExecutor()
+    executor.state = "running"
+    scheduler = _scheduler(tmp_path, executor=executor, adapters=(HostLeaseResourceAdapter(),))
+    principal = _principal("leases.request", "jobs.submit", roots=(tmp_path,))
+    lease = _request_supervised_host_lease(scheduler, principal)
+    background = scheduler.dispatch("jobs.submit", {
+        **_job_args(tmp_path, key="protected-background", priority_class="background", priority=0,
+                    max_attempts=2, interruption={"restart_safe": True, "cancellation_supported": True}),
+        "lease_id": lease["lease_id"], "fencing_token": lease["fencing_token"],
+    }, principal)
+    scheduler.tick()
+    target = scheduler.get_job(background["id"])
+    interactive = scheduler.submit_job({"owner_id": "interactive", "argv": ["/bin/true"],
+        "working_directory": str(tmp_path), "resources": [{"kind": "cpu", "quantities": {"cores": 4}}],
+        "priority_class": "interactive", "priority": 100}, "interactive", "interactive-request")
+    scheduler.tick()
+    assert scheduler.get_job(background["id"])["state"] == "running"
+    assert scheduler.get_job(background["id"])["lease_id"] == lease["lease_id"]
+    assert scheduler._execute_preemption({"target_job_id": background["id"],
+        "target_attempt_id": target["attempt_id"], "target_lease_id": lease["lease_id"]}, interactive["id"]) is False
+    assert scheduler._get_lease(lease["lease_id"]).state.value == "active"

@@ -73,6 +73,17 @@ class LinuxHostAdapter:
                 EnforcementLevel.ADVISORY,
                 {"provided_by": "systemd-user-unit-adapter", "host_qualification_required": True},
             ),
+            AdapterCapability(
+                "cpu-memory-supervised-lease-inputs",
+                True,
+                EnforcementLevel.OBSERVATIONAL,
+                {
+                    "resource_kinds": ["cpu", "memory"],
+                    "consumption": "scheduler-supervised jobs only",
+                    "unmanaged_consumers": "unsupported",
+                    "meaning": "ledger admission quantities; not physical CPU reservation or memory preallocation",
+                },
+            ),
         )
 
     def _build_snapshot(self) -> dict[str, Any]:
@@ -120,7 +131,10 @@ class LinuxHostAdapter:
                     kind="cpu",
                     capacities={"cores": float(cpus)},
                     attributes={"observed_logical_cpus": cpus, "scope": "whole host"},
-                    capabilities=frozenset({"systemd-cgroup-request-dependent"}),
+                    capabilities=frozenset({
+                        "systemd-cgroup-request-dependent",
+                        "supervised-lease-job-only",
+                    }),
                 )
             )
         if total_bytes is not None:
@@ -134,7 +148,10 @@ class LinuxHostAdapter:
                     kind="memory",
                     capacities={"bytes": float(total_bytes)},
                     attributes=observations,
-                    capabilities=frozenset({"systemd-cgroup-request-dependent"}),
+                    capabilities=frozenset({
+                        "systemd-cgroup-request-dependent",
+                        "supervised-lease-job-only",
+                    }),
                 )
             )
         return {

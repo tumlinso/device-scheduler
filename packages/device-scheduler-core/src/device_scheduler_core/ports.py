@@ -16,6 +16,7 @@ from .models import (
     ExecutionHandle,
     HandoffSpec,
     JobSpec,
+    Lease,
     Resource,
     ResourceRequest,
 )
@@ -179,12 +180,30 @@ class ResourceAdapter(Protocol):
 
 
 @runtime_checkable
+class LeaseReclamationAdapter(Protocol):
+    """Optional port for leases whose consumers are outside supervised jobs.
+
+    Implementations must return evidence scoped to the exact lease, current
+    fencing token, operation identity, and full allocation. A TTL or owner
+    acknowledgement alone is never reclamation evidence.
+    """
+
+    api_version: str
+    adapter_id: str
+
+    def reclaim_lease(self, lease: Lease, *, operation_id: str) -> Mapping[str, Any]: ...
+
+
+@runtime_checkable
 class ExecutionAdapter(Protocol):
     """Supervise a job using only resources represented by its actual grant.
 
     ``JobSpec.resources`` expresses requirements; ``execution_context`` carries
     the admitted allocations and descriptors. Missing GPU grant data never
-    authorizes inheriting the adapter's ambient device visibility.
+    authorizes inheriting the adapter's ambient device visibility. A
+    supervised lease is consumable only through this port; adapters must bind
+    the launched unit to the supplied grant and prove its cleanup before the
+    application can release that lease.
     """
 
     api_version: str

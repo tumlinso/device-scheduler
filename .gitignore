@@ -21,3 +21,6 @@ dist/
 .coverage
 htmlcov/
 .device-scheduler/
+
+# Private canonical-service qualification working directories.
+/generic-v1-*/

@@ -1,0 +1,47 @@
+{
+  "marker": "generic-v1-restart-ecee2e4a0d5e4af2bdd9f2ae96527d05",
+  "job_id": "50dcb31d-d815-4eb0-aea4-e661f3e77be9",
+  "state": "qualification-timed-out",
+  "submitted_at": "2026-10-23T18:16:47.229503+00:00",
+  "attempt_id": "c93ece48-8a56-433e-8935-9b86c7b1a392",
+  "invocation_id": "c9c5d16455da4e05b8715cbd01e3113b",
+  "unit": "device-scheduler-attempt-4024fc9f95e8865e9c6379eeeae455c1.service",
+  "handle": {
+    "adapter_id": "systemd-user-unit",
+    "external_id": "device-scheduler-attempt-4024fc9f95e8865e9c6379eeeae455c1.service",
+    "identity": "c93ece48-8a56-433e-8935-9b86c7b1a392",
+    "metadata": {
+      "control_group": "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-4024fc9f95e8865e9c6379eeeae455c1.service",
+      "description": "Device Scheduler attempt c93ece48-8a56-433e-8935-9b86c7b1a392",
+      "execution_root": "/home/tumlinson/.local/state/device-scheduler/executions",
+      "handle_version": 1,
+      "invocation_id": "c9c5d16455da4e05b8715cbd01e3113b",
+      "profile_id": null,
+      "profile_version": null
+    },
+    "started_at": "2026-10-23T18:16:47.514533Z"
+  },
+  "final_state": "failed",
+  "cleanup_verified": true,
+  "logs": {
+    "job_id": "50dcb31d-d815-4eb0-aea4-e661f3e77be9",
+    "attempt_id": "c93ece48-8a56-433e-8935-9b86c7b1a392",
+    "stdout": {
+      "text": "restart-probe-running\nTraceback (most recent call last):\n  File \"<string>\", line 1, in <module>\nAssertionError: restart qualification continuation was not acknowledged\n",
+      "sha256": "7ad6ba0a89654de34e765929bc094a8c700158e9c7bf692d4ec72895e27ac391",
+      "original_bytes": 168,
+      "returned_bytes": 168,
+      "truncated": false,
+      "omitted_lines": 0
+    },
+    "stderr": {
+      "text": "",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "returned_bytes": 0,
+      "truncated": false,
+      "omitted_lines": 0
+    },
+    "cleanup_verified": true
+  }
+}

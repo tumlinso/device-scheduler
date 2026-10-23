@@ -200,7 +200,7 @@ class WeightedFairPolicy:
                 continue
             if self._priority_class(target) != "background":
                 continue
-            if self._read(target, "reservation_id"):
+            if self._read(target, "reservation_id") or self._read(target, "lease_binding") == "supervised":
                 continue
             attempt_id = self._read(target, "attempt_id")
             lease_id = self._read(target, "lease_id")

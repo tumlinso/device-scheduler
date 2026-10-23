@@ -163,3 +163,16 @@ def test_sdk_decodes_structured_scheduler_errors() -> None:
     assert error.value.code == "permission_denied"
     assert error.value.details == {"scope": "jobs.submit"}
 
+
+
+def test_sdk_job_submission_preserves_explicit_lease_fence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    token_path = tmp_path / "client.token"
+    _token_file(token_path)
+    client = DeviceSchedulerClient("http://127.0.0.1:8770", token_path)
+    recorded = []
+    async def call(operation, arguments):
+        recorded.append((operation, arguments))
+        return {"ok": True}
+    monkeypatch.setattr(client, "call", call)
+    asyncio.run(client.submit_job({"argv": ["/bin/true"]}, lease_id="lease:test", fencing_token=42))
+    assert recorded == [("jobs.submit", {"spec": {"argv": ["/bin/true"]}, "lease_id": "lease:test", "fencing_token": 42})]
