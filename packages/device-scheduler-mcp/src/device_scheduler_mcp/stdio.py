@@ -41,6 +41,12 @@ def create_stdio_mcp(client: DeviceSchedulerClient) -> FastMCP:
             ),
             structured_output=True,
         )
+        server._tool_manager._tools[operation.tool_name].parameters = {
+            "type": "object",
+            "properties": {"arguments": operation.input_schema},
+            "required": ["arguments"],
+            "additionalProperties": False,
+        }
     return server
 
 

@@ -93,6 +93,10 @@ class DeviceSchedulerClient:
     async def resource_capabilities(self) -> dict[str, Any]:
         return await self.call("resources.capabilities")
 
+    async def inspect_access(self) -> dict[str, Any]:
+        """Inspect only the grants and limits attached to this caller's token."""
+        return await self.call("access.inspect")
+
     async def request_lease(self, request: ResourceRequest | Mapping[str, Any]) -> dict[str, Any]:
         return await self.call("leases.request", {"request": _as_mapping(request)})
 
@@ -116,6 +120,64 @@ class DeviceSchedulerClient:
         if fencing_token is not None:
             arguments["fencing_token"] = fencing_token
         return await self.call("jobs.submit", arguments)
+
+    async def run_job(
+        self, spec: JobSpec | Mapping[str, Any], *, wait_seconds: float = 30,
+        log_options: Mapping[str, Any] | None = None,
+        lease_id: str | None = None, fencing_token: int | None = None,
+    ) -> dict[str, Any]:
+        """Submit once, wait for a bounded time, then collect status and logs.
+
+        A timeout is a normal result carrying the durable job ID; it never
+        cancels the submitted work or hides its handle.
+        """
+        if isinstance(wait_seconds, bool) or not isinstance(wait_seconds, (int, float)) or not 0 <= wait_seconds <= 300:
+            raise ValueError("wait_seconds must be between 0 and 300")
+        submitted = await self.submit_job(spec, lease_id=lease_id, fencing_token=fencing_token)
+        job = submitted.get("job") if isinstance(submitted.get("job"), Mapping) else submitted
+        job_id = job.get("id", job.get("job_id")) if isinstance(job, Mapping) else None
+        if not isinstance(job_id, str) or not job_id:
+            raise DeviceSchedulerProtocolError("job submission returned no durable job ID")
+        waited = await self.wait_job(job_id, timeout_seconds=float(wait_seconds))
+        nested_job = waited.get("job")
+        if isinstance(nested_job, Mapping):
+            final_job = dict(nested_job)
+        elif isinstance(waited.get("id", waited.get("job_id")), str):
+            # Accept direct-job responses from compatible service versions.
+            final_job = dict(waited)
+        else:
+            final_job = await self.get_job(job_id)
+        try:
+            logs = await self.job_logs(job_id, **dict(log_options or {}))
+            logs_available = bool(logs.get("attempt_id"))
+            logs_error = None
+        except DeviceSchedulerClientError as exc:
+            # Log retrieval is ancillary. Preserve the accepted work handle and
+            # latest status even if this separate read is unavailable.
+            logs = None
+            logs_available = False
+            logs_error = {"code": exc.code, "message": str(exc), "details": exc.details}
+        return {
+            "job_id": job_id,
+            "timed_out": waited.get("timed_out") is True,
+            "job": final_job,
+            "logs": logs,
+            "logs_available": logs_available,
+            "logs_error": logs_error,
+            "submission": submitted,
+        }
+
+    async def reserve(self, request: ResourceRequest | Mapping[str, Any]) -> "SupervisedReservation":
+        """Request supervised capacity and return a fence-aware handle."""
+        request_data = _as_mapping(request)
+        request_data["usage"] = "supervised"
+        result = await self.request_lease(request_data)
+        lease = result.get("lease") if isinstance(result.get("lease"), Mapping) else result
+        lease_id = lease.get("lease_id", lease.get("id")) if isinstance(lease, Mapping) else None
+        fence = lease.get("fencing_token") if isinstance(lease, Mapping) else None
+        if not isinstance(lease_id, str) or isinstance(fence, bool) or not isinstance(fence, int):
+            raise DeviceSchedulerProtocolError("lease request returned no lease ID and fencing token")
+        return SupervisedReservation(self, lease_id, fence, dict(lease))
 
     async def get_job(self, job_id: str) -> dict[str, Any]:
         return await self.call("jobs.get", {"job_id": job_id})
@@ -152,6 +214,59 @@ class DeviceSchedulerClient:
 
     async def status(self) -> dict[str, Any]:
         return await self.call("admin.status")
+
+
+class SupervisedReservation:
+    """Small lease handle that always carries the latest fencing token.
+
+    ``release`` records the scheduler response. Callers must check ``released``;
+    unknown or unverified cleanup remains visible and is never reported as free.
+    """
+
+    def __init__(self, client: DeviceSchedulerClient, lease_id: str, fencing_token: int,
+                 lease: Mapping[str, Any]) -> None:
+        self.client = client
+        self.lease_id = lease_id
+        self.fencing_token = fencing_token
+        self.lease = dict(lease)
+        self.release_result: dict[str, Any] | None = None
+
+    @property
+    def released(self) -> bool:
+        return bool(self.release_result and self.release_result.get("state") == "released")
+
+    async def renew(self, ttl_seconds: float) -> dict[str, Any]:
+        result = await self.client.renew_lease(
+            self.lease_id, fencing_token=self.fencing_token, ttl_seconds=ttl_seconds,
+        )
+        lease = result.get("lease") if isinstance(result.get("lease"), Mapping) else result
+        token = lease.get("fencing_token") if isinstance(lease, Mapping) else None
+        if isinstance(token, bool) or not isinstance(token, int):
+            raise DeviceSchedulerProtocolError("lease renewal returned no current fencing token")
+        self.fencing_token = token
+        self.lease = dict(lease)
+        return result
+
+    async def submit_job(self, spec: JobSpec | Mapping[str, Any]) -> dict[str, Any]:
+        return await self.client.submit_job(spec, lease_id=self.lease_id, fencing_token=self.fencing_token)
+
+    async def release(self) -> dict[str, Any]:
+        result = await self.client.release_lease(self.lease_id, fencing_token=self.fencing_token)
+        lease = result.get("lease") if isinstance(result.get("lease"), Mapping) else result
+        if isinstance(lease, Mapping):
+            token = lease.get("fencing_token")
+            if isinstance(token, int) and not isinstance(token, bool):
+                self.fencing_token = token
+            self.lease = dict(lease)
+        self.release_result = result
+        return result
+
+    async def __aenter__(self) -> "SupervisedReservation":
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+        if not self.released:
+            await self.release()
 
 
 def _as_mapping(value: TModel | Mapping[str, Any]) -> dict[str, Any]:

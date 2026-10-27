@@ -426,6 +426,20 @@ def _principal(*actions: str, roots: tuple[Path, ...] = (), max_priority: int = 
     )
 
 
+def test_access_inspect_is_caller_scoped_and_requires_no_grant(tmp_path: Path) -> None:
+    scheduler = _scheduler(tmp_path)
+    caller = Principal(
+        "agent:one", actions=frozenset({"jobs.submit", "jobs.read:project-*"}),
+        execution_roots=(str(tmp_path / "work"),), backend_ids=frozenset({"backend-a"}), max_priority=40,
+    )
+    result = scheduler.dispatch("access.inspect", {}, caller)
+    assert result == {
+        "principal_id": "agent:one", "actions": ["jobs.read:project-*", "jobs.submit"],
+        "execution_roots": [str(tmp_path / "work")], "backend_ids": ["backend-a"],
+        "max_priority": 40, "scope": "authenticated caller only",
+    }
+
+
 def _job_args(cwd: Path, *, key: str = "job:key", **changes: Any) -> dict[str, Any]:
     spec = {
         "argv": ["/usr/bin/true"],

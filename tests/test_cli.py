@@ -22,6 +22,10 @@ class FakeClient:
         self.calls.append((operation, arguments))
         return {"operation": operation, "arguments": arguments}
 
+    async def run_job(self, spec, *, wait_seconds: float = 30, log_options=None):
+        self.calls.append(("jobs.run", {"spec": spec, "wait_seconds": wait_seconds}))
+        return {"job_id": "job-1", "timed_out": True}
+
 
 def _config_file(tmp_path: Path) -> Path:
     config = tmp_path / "client.toml"
@@ -64,6 +68,16 @@ def test_generic_cli_call_accepts_json_arguments(monkeypatch, tmp_path: Path, ca
     assert result == 0
     assert FakeClient.calls == [("policies.simulate", {"policy_id": "fair"})]
     assert json.loads(capsys.readouterr().out)["operation"] == "policies.simulate"
+
+
+def test_one_off_job_cli_accepts_stdin_and_keeps_durable_timeout_handle(monkeypatch, tmp_path: Path, capsys) -> None:
+    FakeClient.calls.clear()
+    monkeypatch.setattr(cli, "DeviceSchedulerClient", FakeClient)
+    monkeypatch.setattr(cli.sys, "stdin", __import__("io").StringIO('{"argv":["true"]}'))
+    result = cli.main(["--config", str(_config_file(tmp_path)), "job", "run", "--spec-file", "-", "--wait-seconds", "0.1"])
+    assert result == 0
+    assert FakeClient.calls == [("jobs.run", {"spec": {"argv": ["true"]}, "wait_seconds": 0.1})]
+    assert json.loads(capsys.readouterr().out) == {"job_id": "job-1", "timed_out": True}
 
 
 def test_cli_errors_are_machine_readable_and_exit_nonzero(monkeypatch, tmp_path: Path, capsys) -> None:
