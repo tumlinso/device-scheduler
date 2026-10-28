@@ -127,6 +127,36 @@ class UnverifiedCancelFakeExecutor(LeaseBoundFakeExecutor):
         return {"state": "unknown", "cleanup_verified": False, "operation_id": operation_id}
 
 
+class ProvenNotSubmittedError(RuntimeError):
+    execution_not_submitted = True
+
+
+class DiagnosedStartError(RuntimeError):
+    safe_diagnostic = "command timed out: systemd-run"
+
+
+class NotSubmittedExecutor(FakeExecutor):
+    def start(self, spec: Any, *, attempt_id: str, execution_root: Path, execution_context: ExecutionContext | None = None) -> ExecutionHandle:
+        raise ProvenNotSubmittedError("executable path does not resolve")
+
+
+class MissingUnitExecutor(FakeExecutor):
+    def __init__(self, fence_receipt: Mapping[str, Any]) -> None:
+        super().__init__()
+        self.fence_receipt = dict(fence_receipt)
+        self.fence_calls: list[str] = []
+
+    def start(self, spec: Any, *, attempt_id: str, execution_root: Path, execution_context: ExecutionContext | None = None) -> ExecutionHandle:
+        raise DiagnosedStartError("start response was lost")
+
+    def resolve(self, *, attempt_id: str) -> ExecutionHandle | None:
+        return None
+
+    def fence_missing_attempt(self, *, attempt_id: str) -> Mapping[str, Any]:
+        self.fence_calls.append(attempt_id)
+        return dict(self.fence_receipt)
+
+
 class HostLeaseResourceAdapter:
     api_version = "1"
     adapter_id = "linux-host"
@@ -669,6 +699,108 @@ def test_restart_resolves_started_attempt_without_replaying_launch(tmp_path: Pat
     assert len(executor.starts) == 1
     assert result["reconciled_jobs"][0]["state"] == "succeeded"
     assert restarted.get_job(submitted["id"])["cleanup_verified"] is True
+
+
+def test_proven_prelaunch_rejection_is_terminal_and_completes_start_receipt(tmp_path: Path) -> None:
+    work = tmp_path / "work"
+    work.mkdir()
+    scheduler = _scheduler(tmp_path, executor=NotSubmittedExecutor())
+    principal = _principal("jobs.submit", roots=(work,))
+    submitted = scheduler.dispatch("jobs.submit", _job_args(work), principal)
+
+    started = scheduler.tick()["started_jobs"][0]
+    attempt = scheduler.ledger.get("attempts", started["attempt_id"])
+    job = scheduler.get_job(submitted["id"])
+
+    assert job["state"] == "failed"
+    assert job["cleanup_verified"] is True
+    assert job["result"]["execution_started"] is False
+    assert attempt["cleanup_verified"] is True
+    assert scheduler.ledger.operation(attempt["operation_id"])["status"] == "complete"
+
+
+@pytest.mark.parametrize(
+    ("receipt", "expected_state", "expected_cleanup"),
+    [
+        ({"state": "cancelled", "fenced": True, "cleanup_verified": True, "execution_may_have_started": True}, "cancelled", True),
+        ({"state": "unknown", "fenced": False, "cleanup_verified": False, "reason": "mask unavailable"}, "unknown", False),
+    ],
+)
+def test_missing_start_handle_requires_persisted_manager_fence(
+    tmp_path: Path,
+    receipt: Mapping[str, Any],
+    expected_state: str,
+    expected_cleanup: bool,
+) -> None:
+    work = tmp_path / "work"
+    work.mkdir()
+    executor = MissingUnitExecutor(receipt)
+    scheduler = _scheduler(tmp_path, executor=executor)
+    principal = _principal("jobs.submit", "jobs.control", roots=(work,))
+    submitted = scheduler.dispatch("jobs.submit", _job_args(work), principal)
+    started = scheduler.tick()["started_jobs"][0]
+    assert started["state"] == "unknown"
+
+    recovered = scheduler.dispatch(
+        "jobs.control",
+        {"job_id": submitted["id"], "action": "recover"},
+        principal,
+    )
+    attempt = scheduler.ledger.get("attempts", started["attempt_id"])
+    start_operation = scheduler.ledger.operation(attempt["operation_id"])
+    fence_operation = scheduler.ledger.operation(f"job.missing-start-fence:{started['attempt_id']}")
+
+    assert recovered["state"] == expected_state
+    assert recovered["cleanup_verified"] is expected_cleanup
+    assert (recovered.get("result") or {}).get("execution_outcome") == (
+        "unknown_but_inactive_and_fenced" if expected_cleanup else None
+    )
+    assert executor.fence_calls == [started["attempt_id"]]
+    assert start_operation["status"] == ("complete" if expected_cleanup else "unknown")
+    assert fence_operation["status"] == ("complete" if expected_cleanup else "unknown")
+    assert attempt["error"]["type"] == "DiagnosedStartError"
+    assert attempt["error"]["diagnostic"] == "command timed out: systemd-run"
+
+
+def test_missing_start_fence_persists_active_identity_without_stopping_it(tmp_path: Path) -> None:
+    work = tmp_path / "work"
+    work.mkdir()
+
+    class ActiveUnitExecutor(MissingUnitExecutor):
+        def fence_missing_attempt(self, *, attempt_id: str) -> Mapping[str, Any]:
+            self.fence_calls.append(attempt_id)
+            handle = ExecutionHandle(
+                adapter_id=self.adapter_id,
+                external_id=f"unit-{attempt_id}",
+                identity=attempt_id,
+                started_at=NOW,
+                metadata={"invocation_id": f"invocation-{attempt_id}"},
+            )
+            return {
+                "state": "running",
+                "cleanup_verified": False,
+                "fenced": True,
+                "execution_handle": handle.to_dict(),
+            }
+
+    executor = ActiveUnitExecutor({})
+    scheduler = _scheduler(tmp_path, executor=executor)
+    principal = _principal("jobs.submit", "jobs.control", roots=(work,))
+    submitted = scheduler.dispatch("jobs.submit", _job_args(work), principal)
+    started = scheduler.tick()["started_jobs"][0]
+    recovered = scheduler.dispatch(
+        "jobs.control",
+        {"job_id": submitted["id"], "action": "recover"},
+        principal,
+    )
+    attempt = scheduler.ledger.get("attempts", started["attempt_id"])
+    start_operation = scheduler.ledger.operation(attempt["operation_id"])
+
+    assert recovered["state"] == "running"
+    assert recovered["cleanup_verified"] is False
+    assert attempt["execution_handle"]["identity"] == started["attempt_id"]
+    assert start_operation["status"] == "complete"
+    assert executor.fence_calls == [started["attempt_id"]]
 
 
 def test_handoff_job_requires_live_reservation_even_without_resource_requirements(tmp_path: Path) -> None:

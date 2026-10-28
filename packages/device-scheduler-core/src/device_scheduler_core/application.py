@@ -2581,6 +2581,21 @@ class Scheduler:
             self._store_start_receipt(job_id, attempt_id, operation_id, handle, state="running")
             return self.get_job(job_id)
         except Exception as exc:
+            if getattr(exc, "execution_not_submitted", False) is True:
+                rejection = {
+                    "state": "failed",
+                    "execution_started": False,
+                    "reason": str(exc)[:500],
+                }
+                self._store_attempt_result(
+                    job_id,
+                    attempt_id,
+                    rejection,
+                    state="failed",
+                    cleanup_verified=True,
+                )
+                self._release_job_lease(self.get_job(job_id), rejection)
+                return self.get_job(job_id)
             uncertain_handle = getattr(exc, "execution_handle", None)
             try:
                 if uncertain_handle is not None and not isinstance(uncertain_handle, ExecutionHandle):
@@ -2593,7 +2608,14 @@ class Scheduler:
                 operation_id,
                 uncertain_handle,
                 state="unknown",
-                error={"type": type(exc).__name__},
+                error={
+                    "type": type(exc).__name__,
+                    **(
+                        {"diagnostic": str(exc.safe_diagnostic)[:500]}
+                        if isinstance(getattr(exc, "safe_diagnostic", None), str)
+                        else {}
+                    ),
+                },
             )
             return self.get_job(job_id)
 
@@ -2928,6 +2950,61 @@ class Scheduler:
                 self._mark_attempt_unknown(job_id, str(attempt_id), f"execution identity lookup failed: {type(exc).__name__}")
                 return self.get_job(job_id)
             if handle is None:
+                fence = getattr(self.executor, "fence_missing_attempt", None)
+                if callable(fence):
+                    fence_operation_id = f"job.missing-start-fence:{attempt_id}"
+                    fence_intent = self._ensure_operation(
+                        fence_operation_id,
+                        "job.missing_start_fence",
+                        {"job_id": job_id, "attempt_id": str(attempt_id)},
+                        str(job.get("owner", "system")),
+                    )
+                    try:
+                        if fence_intent.get("status") == "complete":
+                            receipt = fence_intent.get("receipt") or {}
+                        else:
+                            receipt = fence(attempt_id=str(attempt_id))
+                            if not isinstance(receipt, Mapping):
+                                receipt = {"state": "unknown", "cleanup_verified": False, "reason": "adapter returned an invalid fence receipt"}
+                            self._record_operation(
+                                fence_operation_id,
+                                receipt,
+                                status="complete" if receipt.get("fenced") is True else "unknown",
+                            )
+                    except Exception as exc:
+                        receipt = {"state": "unknown", "cleanup_verified": False, "error": type(exc).__name__}
+                        self._record_operation(fence_operation_id, receipt, status="unknown")
+                    if isinstance(receipt, Mapping) and receipt.get("cleanup_verified") is True and receipt.get("fenced") is True:
+                        result = {
+                            **dict(receipt),
+                            "execution_outcome": "unknown_but_inactive_and_fenced",
+                        }
+                        self._store_attempt_result(
+                            job_id,
+                            str(attempt_id),
+                            result,
+                            state="cancelled",
+                            cleanup_verified=True,
+                        )
+                        self._release_job_lease(self.get_job(job_id), result)
+                        return self.get_job(job_id)
+                    if isinstance(receipt, Mapping) and isinstance(receipt.get("execution_handle"), Mapping):
+                        try:
+                            active_handle = ExecutionHandle.from_dict(receipt["execution_handle"])
+                        except (TypeError, ValueError):
+                            active_handle = None
+                        if active_handle is not None and active_handle.identity == str(attempt_id):
+                            self._persist_resolved_handle(job_id, str(attempt_id), active_handle)
+                            return self.get_job(job_id)
+                    self._mark_attempt_unknown(
+                        job_id,
+                        str(attempt_id),
+                        str(receipt.get("reason", "systemd execution could not be safely fenced"))
+                        if isinstance(receipt, Mapping)
+                        else "systemd execution could not be safely fenced",
+                        receipt if isinstance(receipt, Mapping) else None,
+                    )
+                    return self.get_job(job_id)
                 self._mark_attempt_unknown(job_id, str(attempt_id), "no execution unit found for persisted start intent")
                 return self.get_job(job_id)
             if not isinstance(handle, ExecutionHandle):
@@ -3278,6 +3355,20 @@ class Scheduler:
             attempt_data = _without_revision(attempt)
             attempt_data.update({"state": state, "result": dict(result), "cleanup_verified": cleanup_verified, "finished_at": now})
             tx.put("attempts", attempt_id, attempt_data, attempt[_REVISION])
+            start_operation_id = attempt_data.get("operation_id")
+            start_operation = tx.operation(str(start_operation_id)) if start_operation_id else None
+            if start_operation is not None and start_operation.get("status") in {"intent", "unknown"}:
+                tx.record_receipt(
+                    str(start_operation_id),
+                    {
+                        "state": state,
+                        "attempt_id": attempt_id,
+                        "execution_handle": attempt_data.get("execution_handle"),
+                        "result": dict(result),
+                        "cleanup_verified": cleanup_verified,
+                    },
+                    status="complete" if cleanup_verified else "unknown",
+                )
             job = tx.get("jobs", job_id)
             if job is not None:
                 job_data = _without_revision(job)
@@ -3291,7 +3382,9 @@ class Scheduler:
             attempt = tx.get("attempts", attempt_id)
             if attempt is not None:
                 attempt_data = _without_revision(attempt)
-                attempt_data.update({"state": "unknown", "error": {"reason": reason}, "observation": _json_value(observation or {}), "updated_at": now})
+                error = dict(attempt_data.get("error") or {})
+                error["reconciliation_reason"] = reason
+                attempt_data.update({"state": "unknown", "error": error, "observation": _json_value(observation or {}), "updated_at": now})
                 tx.put("attempts", attempt_id, attempt_data, attempt[_REVISION])
             job = tx.get("jobs", job_id)
             if job is not None and _state(job.get("state")) not in _TERMINAL:

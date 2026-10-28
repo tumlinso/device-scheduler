@@ -28,6 +28,7 @@ class FakeSystemd:
         self.cgroup_root = cgroup_root
         self.calls: list[list[str]] = []
         self.units: dict[str, dict[str, str]] = {}
+        self.masked: set[str] = set()
         self.logs = "bounded test output"
         self.log_truncated = False
 
@@ -56,6 +57,8 @@ class FakeSystemd:
         self.calls.append(list(argv))
         if argv[0] == "systemd-run":
             unit = next(value.split("=", 1)[1] for value in argv if value.startswith("--unit="))
+            if unit in self.masked:
+                return SimpleNamespace(returncode=1, stdout="", stderr="unit is masked")
             description = next(value.split("=", 1)[1] for value in argv if value.startswith("--description="))
             attempt_id = description.removeprefix("Device Scheduler attempt ")
             self.install(attempt_id)
@@ -68,6 +71,20 @@ class FakeSystemd:
                 stdout="".join(f"{key}={value}\n" for key, value in properties.items()),
                 stderr="",
             )
+        if argv[0] == "systemctl" and "mask" in argv:
+            unit = argv[-1]
+            self.masked.add(unit)
+            if unit in self.units:
+                self.units[unit]["LoadState"] = "masked-runtime"
+            else:
+                self.units[unit] = {
+                    "Id": unit,
+                    "Description": unit,
+                    "LoadState": "masked-runtime",
+                    "ActiveState": "inactive",
+                    "SubState": "dead",
+                }
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
         if argv[0] == "systemctl" and "stop" in argv:
             unit = argv[3]
             properties = self.units[unit]
@@ -133,6 +150,141 @@ def test_start_uses_deterministic_transient_unit_and_limits(tmp_path: Path) -> N
     assert "--property=RuntimeMaxSec=3600s" in command
     assert "--collect" not in command
     assert command[-4:] == ["--", "python", "-c", "print('safe')"]
+
+
+def test_start_resolves_relative_executable_and_rejects_missing_before_submission(tmp_path: Path) -> None:
+    work = tmp_path / "work"
+    work.mkdir()
+    script = work / "run.sh"
+    script.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    script.chmod(0o755)
+    fake = FakeSystemd(tmp_path / "cgroup")
+    adapter = SystemdExecutionAdapter(runner=fake, cgroup_root=tmp_path / "cgroup")
+
+    adapter.start(
+        JobSpec(owner_id="client:test", argv=("./run.sh", "arg"), working_directory=str(work)),
+        attempt_id="attempt:relative-executable",
+        execution_root=tmp_path / "runs",
+    )
+
+    assert fake.calls[0][-3:] == ["--", str(script), "arg"]
+    assert fake.units
+
+    before = len(fake.calls)
+    with pytest.raises(ExecutionAdapterError, match="does not resolve"):
+        adapter.start(
+            JobSpec(owner_id="client:test", argv=("./missing.sh",), working_directory=str(work)),
+            attempt_id="attempt:missing-executable",
+            execution_root=tmp_path / "runs",
+        )
+    assert len(fake.calls) == before
+
+
+def test_attempt_cgroup_derivation_uses_user_manager_app_slice(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from device_scheduler_adapters import systemd
+
+    root = tmp_path / "cgroup"
+    app_slice = root / "user.slice/user-1000.slice/user@1000.service/app.slice"
+    app_slice.mkdir(parents=True)
+    (app_slice / "cgroup.events").write_text("populated 0\n", encoding="ascii")
+    (app_slice / "cgroup.procs").write_text("\n", encoding="ascii")
+    original_read_text = Path.read_text
+    monkeypatch.setattr(
+        systemd.Path,
+        "read_text",
+        lambda self, **kwargs: "0::/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler.service\n"
+        if str(self) == "/proc/self/cgroup"
+        else original_read_text(self, **kwargs),
+    )
+
+    adapter = SystemdExecutionAdapter(runner=FakeSystemd(root), cgroup_root=root)
+    assert adapter._attempt_control_group("device-scheduler-attempt-test.service") == (
+        "/user.slice/user-1000.slice/user@1000.service/app.slice/device-scheduler-attempt-test.service"
+    )
+
+
+def test_fence_missing_attempt_blocks_late_start_and_reports_cleanup(tmp_path: Path) -> None:
+    root = tmp_path / "cgroup"
+    root.mkdir()
+    fake = FakeSystemd(root)
+    adapter = SystemdExecutionAdapter(runner=fake, cgroup_root=root)
+    unit = attempt_unit_name("attempt:late-start")
+    adapter._attempt_control_group = lambda _unit: f"/user.slice/{unit}"
+
+    receipt = adapter.fence_missing_attempt(attempt_id="attempt:late-start")
+
+    assert receipt["cleanup_verified"] is True
+    assert receipt["fenced"] is True
+    assert unit in fake.masked
+    with pytest.raises(ExecutionAdapterError, match="rejected"):
+        adapter.start(
+            JobSpec(owner_id="client:test", argv=("true",), working_directory=str(tmp_path)),
+            attempt_id="attempt:late-start",
+            execution_root=tmp_path / "runs",
+        )
+    assert fake.units[unit]["ActiveState"] == "inactive"
+    assert not any("stop" in call for call in fake.calls)
+
+
+def test_fence_never_stops_active_unit_and_fails_closed_on_foreign_collision(tmp_path: Path) -> None:
+    root = tmp_path / "cgroup"
+    fake = FakeSystemd(root)
+    adapter = SystemdExecutionAdapter(runner=fake, cgroup_root=root)
+    unit = fake.install("attempt:owned-start")
+    adapter._attempt_control_group = lambda _unit: fake.units[unit]["ControlGroup"]
+
+    receipt = adapter.fence_missing_attempt(attempt_id="attempt:owned-start")
+
+    assert receipt["cleanup_verified"] is False
+    assert receipt["state"] == "running"
+    assert receipt["execution_handle"]["identity"] == "attempt:owned-start"
+    assert not any("stop" in call for call in fake.calls)
+    assert fake.units[unit]["ActiveState"] == "active"
+
+    other = FakeSystemd(root)
+    foreign_unit = other.install("attempt:foreign")
+    other.units[foreign_unit]["Description"] = "unrelated service"
+    foreign_adapter = SystemdExecutionAdapter(runner=other, cgroup_root=root)
+    foreign_adapter._attempt_control_group = lambda _unit: other.units[foreign_unit]["ControlGroup"]
+    blocked = foreign_adapter.fence_missing_attempt(attempt_id="attempt:foreign")
+    assert blocked["cleanup_verified"] is False
+    assert not any("stop" in call for call in other.calls)
+
+
+def test_fence_requires_explicit_inactive_state_and_empty_cgroup(tmp_path: Path) -> None:
+    root = tmp_path / "cgroup"
+    class MissingStateRunner(FakeSystemd):
+        def __call__(self, argv, *, timeout, max_output_bytes=None):
+            if argv[0] == "systemctl" and "show" in argv and argv[3] in self.masked:
+                self.calls.append(list(argv))
+                return SimpleNamespace(returncode=0, stdout="LoadState=masked-runtime\n", stderr="")
+            return super().__call__(argv, timeout=timeout, max_output_bytes=max_output_bytes)
+
+    fake = MissingStateRunner(root)
+    adapter = SystemdExecutionAdapter(runner=fake, cgroup_root=root)
+    unit = attempt_unit_name("attempt:ambiguous-fence")
+    adapter._attempt_control_group = lambda _unit: f"/user.slice/{unit}"
+
+    receipt = adapter.fence_missing_attempt(attempt_id="attempt:ambiguous-fence")
+
+    assert receipt["cleanup_verified"] is False
+    assert "inactive" in receipt["reason"]
+    assert not any("stop" in call for call in fake.calls)
+
+
+def test_fence_keeps_unknown_when_existing_unit_cgroup_is_not_empty(tmp_path: Path) -> None:
+    root = tmp_path / "cgroup"
+    fake = FakeSystemd(root)
+    adapter = SystemdExecutionAdapter(runner=fake, cgroup_root=root)
+    unit = fake.install("attempt:populated-cgroup")
+    fake.units[unit].update(LoadState="masked-runtime", ActiveState="inactive", SubState="dead")
+    adapter._attempt_control_group = lambda _unit: fake.units[unit]["ControlGroup"]
+
+    receipt = adapter.fence_missing_attempt(attempt_id="attempt:populated-cgroup")
+
+    assert receipt["cleanup_verified"] is False
+    assert "cgroup" in receipt["reason"]
+    assert not any("stop" in call for call in fake.calls)
 
 
 def _execution_context(*, purpose: ExecutionPurpose = ExecutionPurpose.JOB) -> ExecutionContext:

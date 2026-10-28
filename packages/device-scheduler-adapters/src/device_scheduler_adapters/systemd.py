@@ -44,13 +44,23 @@ _GPU_UUID = re.compile(r"^GPU-[A-Za-z0-9-]+$")
 class ExecutionAdapterError(RuntimeError):
     """An execution operation failed or could not be verified."""
 
+    def __init__(self, message: str, *, safe_diagnostic: str | None = None) -> None:
+        super().__init__(message)
+        self.safe_diagnostic = safe_diagnostic
+
 
 class StartUncertain(ExecutionAdapterError):
     """The start command may have had an effect; inspect this stable handle."""
 
     def __init__(self, message: str, handle: Mapping[str, Any]):
-        super().__init__(message)
+        super().__init__(message, safe_diagnostic=message)
         self.execution_handle = dict(handle)
+
+
+class StartNotSubmitted(ExecutionAdapterError):
+    """Local validation proved the execution request was never submitted."""
+
+    execution_not_submitted = True
 
 
 CommandResult = Any
@@ -606,7 +616,16 @@ class SystemdExecutionAdapter:
         argv = self._spec_argv(resolved)
         cwd = _value(resolved, "working_directory", _value(resolved, "cwd"))
         if not isinstance(cwd, str) or not cwd or "\x00" in cwd:
-            raise ValueError("execution spec requires an explicit working directory")
+            raise StartNotSubmitted("execution spec requires an explicit working directory")
+        working_directory = Path(cwd).expanduser()
+        if not working_directory.is_absolute():
+            raise StartNotSubmitted("working directory must be absolute")
+        try:
+            working_directory = working_directory.resolve()
+        except (OSError, RuntimeError) as exc:
+            raise StartNotSubmitted("working directory path cannot be resolved") from exc
+        cwd = str(working_directory)
+        argv = self._absolute_path_executable(argv, cwd)
         command = [
             "systemd-run",
             "--user",
@@ -646,12 +665,151 @@ class SystemdExecutionAdapter:
         if return_code != 0:
             detail = _result_attr(result, "stderr", "") or props
             raise ExecutionAdapterError(
-                f"systemd-run rejected attempt {attempt_id}: {str(detail).strip()[:1000]}"
+                f"systemd-run rejected attempt {attempt_id}: {str(detail).strip()[:1000]}",
+                safe_diagnostic="systemd-run returned a nonzero status and no invocation could be verified",
             )
         raise StartUncertain(
             "systemd accepted the start request but its unit invocation could not be verified",
             handle,
         )
+
+    @staticmethod
+    def _absolute_path_executable(argv: list[str], cwd: str) -> list[str]:
+        """Resolve slash-containing executable paths before systemd sees them.
+
+        systemd's ExecStart parser accepts an absolute path or a bare command
+        name; a relative path containing a slash is not resolved against
+        WorkingDirectory. Rejecting bad targets here is important because it
+        proves that no external start request has been submitted.
+        """
+        executable = argv[0]
+        if not executable:
+            raise StartNotSubmitted("executable path is empty")
+        if "/" not in executable:
+            return argv
+        path = Path(executable)
+        if not path.is_absolute():
+            path = Path(cwd) / path
+        try:
+            resolved = path.resolve(strict=True)
+            resolved.stat()
+        except (OSError, RuntimeError) as exc:
+            raise StartNotSubmitted("executable path does not resolve to an existing file") from exc
+        if not resolved.is_file() or not os.access(resolved, os.X_OK):
+            raise StartNotSubmitted("executable path is not a runnable regular file")
+        return [str(resolved), *argv[1:]]
+
+    def fence_missing_attempt(self, *, attempt_id: str) -> Mapping[str, Any]:
+        """Fence a handle-less attempt and prove its systemd unit is stopped.
+
+        A not-found lookup alone is not proof: a delayed systemd-run request
+        could create the deterministic unit after reconciliation. A runtime
+        mask acknowledged by the manager blocks that later start. This method
+        never stops a unit by name: a raced active unit remains unknown (or is
+        rebound to its invocation identity). Cleanup is accepted only after
+        the mask, inactive unit state, and derived unit cgroup are verified.
+        """
+        unit_name = attempt_unit_name(attempt_id)
+        expected_description = f"Device Scheduler attempt {attempt_id}"
+        before_load = self._unit_load_state(unit_name)
+        if before_load is None:
+            return {"state": "unknown", "cleanup_verified": False, "reason": "unit load state is ambiguous", "unit_name": unit_name}
+        masked_states = {"masked", "masked-runtime", "masked-transient"}
+        before = self._show(unit_name) if before_load == "loaded" else {}
+        if before_load == "loaded" and not self._expected_unit_identity(before, unit_name, expected_description):
+            return {"state": "unknown", "cleanup_verified": False, "reason": "deterministic unit identity mismatch", "unit_name": unit_name}
+        control_group = before.get("ControlGroup") or self._attempt_control_group(unit_name)
+        if not control_group:
+            return {"state": "unknown", "cleanup_verified": False, "reason": "unit cgroup path cannot be safely derived", "unit_name": unit_name}
+        try:
+            # Mask first, without stopping by name. A raced active unit is
+            # left running and unknown; this operation only blocks a later
+            # launch after the manager acknowledges the tombstone.
+            result = self._call(["systemctl", "--user", "mask", "--runtime", unit_name])
+        except ExecutionAdapterError as exc:
+            return {"state": "unknown", "cleanup_verified": False, "reason": str(exc), "unit_name": unit_name}
+        if _result_attr(result, "returncode", 1) != 0:
+            detail = _result_attr(result, "stderr", "") or _result_attr(result, "stdout", "")
+            return {"state": "unknown", "cleanup_verified": False, "reason": f"unit fence failed: {str(detail).strip()[:500]}", "unit_name": unit_name}
+        after_load = self._unit_load_state(unit_name)
+        if after_load not in masked_states:
+            return {"state": "unknown", "cleanup_verified": False, "reason": "systemd did not confirm the runtime mask", "unit_name": unit_name}
+        after = self._show(unit_name)
+        if after.get("Description") not in {None, expected_description, unit_name}:
+            return {"state": "unknown", "cleanup_verified": False, "reason": "racing unit identity cannot be verified", "unit_name": unit_name, "observation": after}
+        active_state = after.get("ActiveState")
+        substate = after.get("SubState")
+        if active_state not in {"inactive", "failed"}:
+            invocation_id = after.get("InvocationID")
+            if self._expected_unit_identity(after, unit_name, expected_description) and invocation_id:
+                active_handle = self._new_handle_data(
+                    attempt_id,
+                    invocation_id=invocation_id,
+                    metadata={"fenced": True, "control_group": control_group},
+                )
+                return {
+                    "state": "running",
+                    "cleanup_verified": False,
+                    "fenced": True,
+                    "execution_handle": self._model_handle(active_handle).to_dict(),
+                    "unit_name": unit_name,
+                    "control_group": control_group,
+                    "observation": after,
+                }
+            return {"state": "unknown", "cleanup_verified": False, "reason": "masked unit is not confirmed inactive", "unit_name": unit_name, "observation": after}
+        if not self._cgroup_empty(control_group, active_state=active_state, substate=substate or ""):
+            return {"state": "unknown", "cleanup_verified": False, "reason": "unit cgroup is not confirmed empty", "unit_name": unit_name, "control_group": control_group, "observation": after}
+        return {
+            "state": "cancelled",
+            "cleanup_verified": True,
+            "execution_may_have_started": True,
+            "fenced": True,
+            "fence": "systemd-runtime-mask",
+            "unit_name": unit_name,
+            "control_group": control_group,
+            "observation": after,
+        }
+
+    def _unit_load_state(self, unit_name: str) -> str | None:
+        try:
+            result = self._call(["systemctl", "--user", "show", unit_name, "--property=LoadState"])
+        except ExecutionAdapterError:
+            return None
+        if _result_attr(result, "returncode", 1) != 0:
+            return None
+        return _parse_properties(_result_attr(result, "stdout", "") or "").get("LoadState")
+
+    @staticmethod
+    def _expected_unit_identity(properties: Mapping[str, str], unit_name: str, description: str) -> bool:
+        return properties.get("Id") == unit_name and properties.get("Description") == description
+
+    def _attempt_control_group(self, unit_name: str) -> str | None:
+        """Derive this user manager's app.slice path from our own cgroup."""
+        try:
+            hierarchy = next(
+                line.split(":", 2)[2].strip()
+                for line in Path("/proc/self/cgroup").read_text(encoding="ascii").splitlines()
+                if line.startswith("0::")
+            )
+        except (OSError, StopIteration):
+            return None
+        parts = Path(hierarchy).parts
+        manager_index = next(
+            (index for index, item in enumerate(parts) if item.startswith("user@") and item.endswith(".service")),
+            None,
+        )
+        if manager_index is None or parts[manager_index] != f"user@{os.getuid()}.service":
+            return None
+        relative_app_slice = Path(*parts[1:manager_index + 1]) / "app.slice"
+        try:
+            root = self._cgroup_root.resolve(strict=True)
+            app_slice = (root / relative_app_slice).resolve(strict=True)
+            app_slice.relative_to(root)
+        except (OSError, ValueError):
+            return None
+        if app_slice != root / relative_app_slice or not (app_slice / "cgroup.events").is_file() or not (app_slice / "cgroup.procs").is_file():
+            return None
+        return str(Path("/") / relative_app_slice / unit_name)
 
     def _show(self, unit_name: str) -> dict[str, str]:
         properties = (
