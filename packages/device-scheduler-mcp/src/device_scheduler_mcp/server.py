@@ -208,6 +208,15 @@ def register_operation_tools(server: FastMCP, service: SchedulerService) -> tupl
             annotations=annotations,
             structured_output=True,
         )
+        # FastMCP infers ``arguments`` as an untyped object. Replace only the
+        # advertised parameters with the shared canonical operation contract;
+        # dispatch continues to receive the same nested ``arguments`` object.
+        server._tool_manager._tools[operation.tool_name].parameters = {
+            "type": "object",
+            "properties": {"arguments": operation.input_schema},
+            "required": ["arguments"],
+            "additionalProperties": False,
+        }
         registered.append(operation.tool_name)
     return tuple(registered)
 

@@ -69,6 +69,7 @@ from .scheduling import (
 OPERATION_NAMES: dict[str, str] = {
     "resources.list": "resources.list",
     "resources.capabilities": "resources.capabilities",
+    "access.inspect": "access.inspect",
     "leases.request": "leases.request",
     "leases.get": "leases.get",
     "leases.list": "leases.list",
@@ -340,6 +341,15 @@ class Scheduler:
             }
         if operation == "resources.capabilities":
             return self._capabilities()
+        if operation == "access.inspect":
+            return {
+                "principal_id": actor.principal_id,
+                "actions": sorted(actor.actions),
+                "execution_roots": list(actor.execution_roots),
+                "backend_ids": sorted(actor.backend_ids),
+                "max_priority": actor.max_priority,
+                "scope": "authenticated caller only",
+            }
         if operation == "leases.request":
             return self._request_lease(args, actor)
         if operation == "leases.get":
@@ -3849,6 +3859,11 @@ class Scheduler:
         return frozenset((*configured, *scoped))
 
     def _authorize(self, actor: Principal, operation: str) -> None:
+        # Every authenticated caller may inspect its own configured grants.
+        # The request has no caller-supplied identity and reveals no other
+        # principal's policy or credential material.
+        if operation == "access.inspect":
+            return
         event_scoped = operation == "events.publish" and any(
             action.startswith("events.publish:") for action in actor.actions
         )

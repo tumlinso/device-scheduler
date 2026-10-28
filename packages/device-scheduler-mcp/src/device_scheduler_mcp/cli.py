@@ -110,6 +110,11 @@ def build_parser() -> argparse.ArgumentParser:
             if operation.endswith(".control"):
                 command_parser.add_argument("control_action")
             _add_arguments_input(command_parser, payload_required=payload_field is not None)
+        if family == "jobs":
+            runner = action_parsers.add_parser("run", help="submit once, wait briefly, and collect logs")
+            runner.add_argument("--spec-file", required=True, help="JSON/TOML job specification, or - for JSON on stdin")
+            runner.add_argument("--wait-seconds", type=float, default=30, help="bounded wait from 0 through 300 seconds")
+            runner.add_argument("--log-options-json", help="JSON object of jobs.logs options")
     return parser
 
 
@@ -156,6 +161,19 @@ def _command_arguments(args: argparse.Namespace) -> tuple[str, dict[str, Any]]:
     return operation, payload
 
 
+def _read_payload(path: str) -> dict[str, Any]:
+    if path == "-":
+        try:
+            value = json.load(sys.stdin)
+        except json.JSONDecodeError as exc:
+            raise ConfigurationError("job specification on stdin must be valid JSON") from exc
+    else:
+        value = load_json_or_toml(Path(path))
+    if not isinstance(value, dict):
+        raise ConfigurationError("job specification must be an object")
+    return value
+
+
 def _load_service_config(path: Path | None) -> ServiceConfig:
     if path is not None:
         return ServiceConfig.from_file(path)
@@ -172,6 +190,17 @@ async def _run_client_command(config: ServiceConfig, operation: str, arguments: 
         mcp_path=config.mcp_path,
     )
     return await client.call(operation, arguments)
+
+
+async def _run_job_command(config: ServiceConfig, args: argparse.Namespace) -> dict[str, Any]:
+    client = DeviceSchedulerClient(
+        f"http://{_url_host(config.host)}:{config.port}", config.token_file,
+        timeout_seconds=config.http_timeout_seconds, mcp_path=config.mcp_path,
+    )
+    log_options = json.loads(args.log_options_json) if args.log_options_json else {}
+    if not isinstance(log_options, dict):
+        raise ConfigurationError("--log-options-json must contain a JSON object")
+    return await client.run_job(_read_payload(args.spec_file), wait_seconds=args.wait_seconds, log_options=log_options)
 
 
 def _url_host(host: str) -> str:
@@ -195,6 +224,10 @@ def main(argv: list[str] | None = None) -> int:
                 mcp_path=config.mcp_path,
             )
             run_stdio_proxy(client)
+            return 0
+        if args.command in {"jobs", "job"} and getattr(args, "action_name", None) == "run":
+            result = asyncio.run(_run_job_command(config, args))
+            print(json.dumps(result, indent=2, sort_keys=True, ensure_ascii=False, allow_nan=False))
             return 0
         operation, arguments = (
             (args.operation, _read_arguments(args)) if args.command == "call" else _command_arguments(args)

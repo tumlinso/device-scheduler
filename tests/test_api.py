@@ -73,6 +73,10 @@ async def test_authenticated_streamable_http_uses_core_dispatch_and_tool_registr
         assert {tool.name for tool in tools} == {item.tool_name for item in operations()}
         assert set(operation_names()) == {item.name for item in operations()}
         assert all(tool.annotations is not None for tool in tools)
+        input_schemas = {tool.name: tool.inputSchema for tool in tools}
+        assert input_schemas["jobs_submit"]["properties"]["arguments"]["required"] == ["spec"]
+        assert input_schemas["jobs_submit"]["properties"]["arguments"]["properties"]["lease_id"]["type"] == "string"
+        assert input_schemas["access_inspect"]["properties"]["arguments"]["properties"] == {}
         annotations = {tool.name: tool.annotations for tool in tools}
         assert annotations["resources_list"].readOnlyHint is True
         assert annotations["jobs_submit"].destructiveHint is True

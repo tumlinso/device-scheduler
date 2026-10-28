@@ -12,6 +12,62 @@ From the installed checkout:
 
 An MCP client can launch `.venv/bin/device-scheduler mcp-stdio`; this bridges to the existing authenticated daemon and does not start another allocator. Treat token files as private; never paste their contents into requests.
 
+## Check what your caller can do
+
+Every authenticated caller can ask for its own effective grant summary. It
+shows the actions, execution roots, backend scope and priority limit attached
+to that caller's token. It cannot inspect another caller or reveal token
+material:
+
+```sh
+.venv/bin/device-scheduler call access.inspect
+```
+
+MCP tools advertise the fields expected by each operation. The outer
+`arguments` object remains the same as before; for example,
+`jobs_submit.arguments` contains `spec` and may also contain `lease_id` and
+`fencing_token`.
+
+## Submit and collect a job in one command
+
+Use `job run` for a one-off job. It submits once, waits for at most the chosen
+duration, then collects the current job status and bounded logs. A timeout
+does not cancel the job: the JSON result includes its durable `job_id`, so you
+can inspect it later with `job get` or `job logs`.
+
+```sh
+cat job.json | .venv/bin/device-scheduler job run --spec-file - --wait-seconds 20
+```
+
+The specification can also come from a JSON or TOML file. Waits are bounded
+to 300 seconds. The Python client offers the same composition:
+
+```python
+result = await client.run_job(job_spec, wait_seconds=20)
+print(result["job_id"], result["timed_out"], result["logs"])
+```
+
+## Reuse a supervised reservation
+
+The Python SDK's reservation handle keeps the current fencing token through
+renewal and job submission. Releasing may report `unknown` or unverified
+cleanup; check `reservation.released` before treating capacity as reclaimed.
+
+```python
+reservation = await client.reserve(request)
+try:
+    await reservation.renew(300)
+    result = await reservation.submit_job(job_spec)
+finally:
+    await reservation.release()
+if not reservation.released:
+    print("Reservation cleanup is not yet verified", reservation.release_result)
+```
+
+The scheduler remains the authority for admission, fencing and reclamation.
+The handle is convenience bookkeeping; it does not bypass grants or make
+unmanaged processes safe.
+
 ## A CPU/memory lease and job
 
 Run this with `.venv/bin/python` from this checkout, which is an approved execution root for the installed operator. For another project, provision a separately scoped token with `scripts/provision-token.py` and load its grant during an administrator-controlled restart.

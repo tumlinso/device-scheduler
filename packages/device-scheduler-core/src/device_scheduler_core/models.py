@@ -512,7 +512,7 @@ class JobSpec(JsonModel):
     environment: Mapping[str, str] = field(default_factory=dict)
     resources: tuple[ResourceRequirement, ...] = ()
     tags: frozenset[str] = frozenset()
-    priority_class: str = "normal"
+    priority_class: PriorityClass = PriorityClass.NORMAL
     priority: int = 50
     timeout_seconds: float = 3600.0
     max_attempts: int = 1

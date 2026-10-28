@@ -13,7 +13,7 @@ from types import SimpleNamespace
 
 from device_scheduler_core.models import JobSpec, Principal, ResourceRequest, ResourceRequirement, ScheduleSpec
 from device_scheduler_mcp.auth import StaticTokenStore, TokenGrant
-from device_scheduler_mcp.client import DeviceSchedulerClient, DeviceSchedulerClientError
+from device_scheduler_mcp.client import DeviceSchedulerClient, DeviceSchedulerClientError, SupervisedReservation
 from device_scheduler_mcp.registry import operations
 from device_scheduler_mcp.server import create_asgi_app
 from device_scheduler_mcp.stdio import create_stdio_mcp
@@ -104,6 +104,103 @@ def test_mcp_stdio_bridge_registers_and_forwards_the_same_operation_set() -> Non
 
     asyncio.run(server.call_tool("jobs_submit", {"arguments": {"spec": {"owner_id": "agent"}}}))
     assert target.calls == [("jobs.submit", {"spec": {"owner_id": "agent"}})]
+    schemas = {tool.name: tool.inputSchema for tool in tools}
+    jobs_args = schemas["jobs_submit"]["properties"]["arguments"]
+    spec = jobs_args["properties"]["spec"]
+    assert jobs_args["required"] == ["spec"]
+    assert jobs_args["properties"]["fencing_token"]["type"] == "integer"
+    assert "owner_id" in spec["required"]
+    assert {"type": "array", "items": {"type": "string"}} in spec["properties"]["argv"]["anyOf"]
+    assert spec["properties"]["priority_class"]["enum"] == ["interactive", "normal", "background"]
+    assert spec["properties"]["resources"]["items"]["properties"]["quantities"]["type"] == "object"
+    assert spec["properties"]["resources"]["items"]["required"] == ["kind", "quantities"]
+    assert spec["properties"]["resources"]["items"]["properties"]["mode"]["enum"] == ["shared", "exclusive"]
+    request = schemas["leases_request"]["properties"]["arguments"]["properties"]["request"]
+    assert {"request_id", "owner_id", "requirements", "lease_ttl_seconds"}.issubset(request["required"])
+    assert request["properties"]["requirements"]["items"]["properties"]["quantities"]["type"] == "object"
+    assert schemas["leases_renew"]["properties"]["arguments"]["required"] == ["lease_id", "fencing_token", "ttl_seconds"]
+
+
+def test_sdk_one_off_job_preserves_handle_when_bounded_wait_times_out(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    token_path = tmp_path / "client.token"
+    _token_file(token_path)
+    client = DeviceSchedulerClient("http://localhost:8770", token_path)
+    recorded: list[tuple[str, object]] = []
+
+    async def submit(spec, **kwargs):
+        recorded.append(("submit", kwargs))
+        return {"id": "durable-job-1", "state": "queued"}
+
+    async def wait(job_id, *, timeout_seconds):
+        recorded.append(("wait", timeout_seconds))
+        return {"job": {"id": job_id, "state": "running"}, "timed_out": True}
+
+    async def logs(job_id, **kwargs):
+        recorded.append(("logs", job_id))
+        return {"job_id": job_id, "stdout": ""}
+
+    monkeypatch.setattr(client, "submit_job", submit)
+    monkeypatch.setattr(client, "wait_job", wait)
+    monkeypatch.setattr(client, "job_logs", logs)
+    result = asyncio.run(client.run_job({"argv": ["true"]}, wait_seconds=0.1))
+    assert result["job_id"] == "durable-job-1" and result["timed_out"] is True
+    assert result["logs_available"] is False
+    assert [name for name, _value in recorded] == ["submit", "wait", "logs"]
+
+
+def test_sdk_job_runner_keeps_nested_or_direct_status_if_log_fetch_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    token_path = tmp_path / "client.token"
+    _token_file(token_path)
+    client = DeviceSchedulerClient("http://localhost:8770", token_path)
+
+    async def submit(_spec, **_kwargs):
+        return {"job": {"id": "job-2", "state": "queued"}}
+
+    async def wait(_job_id, *, timeout_seconds):
+        return {"id": "job-2", "state": "queued", "timed_out": True}
+
+    async def logs(_job_id, **_kwargs):
+        raise DeviceSchedulerClientError("not_found", "attempt logs are not available yet")
+
+    monkeypatch.setattr(client, "submit_job", submit)
+    monkeypatch.setattr(client, "wait_job", wait)
+    monkeypatch.setattr(client, "job_logs", logs)
+    result = asyncio.run(client.run_job({"argv": ["true"]}, wait_seconds=0))
+    assert result["job_id"] == "job-2"
+    assert result["job"] == {"id": "job-2", "state": "queued", "timed_out": True}
+    assert result["logs"] is None and result["logs_available"] is False
+    assert result["logs_error"]["code"] == "not_found"
+
+
+def test_supervised_reservation_tracks_latest_fence_and_uncertain_cleanup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    token_path = tmp_path / "client.token"
+    _token_file(token_path)
+    client = DeviceSchedulerClient("http://localhost:8770", token_path)
+    sent: list[tuple[str, dict[str, object]]] = []
+
+    async def call(operation, arguments=None):
+        args = dict(arguments or {})
+        sent.append((operation, args))
+        if operation == "leases.renew":
+            return {"lease_id": "lease-1", "fencing_token": 8, "state": "active"}
+        if operation == "leases.release":
+            return {"lease_id": "lease-1", "fencing_token": 9, "state": "unknown", "cleanup_verified": False}
+        return {"lease_id": "lease-1", "fencing_token": 7, "state": "active"}
+
+    monkeypatch.setattr(client, "call", call)
+
+    async def run():
+        reservation = await client.reserve({"request_id": "r", "owner_id": "agent", "requirements": [], "lease_ttl_seconds": 30, "idempotency_key": "r"})
+        await reservation.renew(45)
+        await reservation.submit_job({"argv": ["true"]})
+        result = await reservation.release()
+        return reservation, result
+
+    reservation, result = asyncio.run(run())
+    assert reservation.fencing_token == 9 and reservation.released is False
+    assert result["cleanup_verified"] is False
+    assert sent[0][1]["request"]["usage"] == "supervised"
+    assert sent[-1][1]["fencing_token"] == 8
 
 
 def test_stdio_session_bridge_forwards_to_authenticated_http_daemon(tmp_path: Path) -> None:
