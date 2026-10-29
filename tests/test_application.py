@@ -10,6 +10,7 @@ from typing import Any, Mapping
 import pytest
 
 from device_scheduler_adapters.sqlite import Ledger
+from device_scheduler_adapters.nvidia import NvidiaAdapter
 from device_scheduler_core.allocator import ResourceAllocator
 from device_scheduler_core.application import Scheduler, SchedulerConfig
 from device_scheduler_core.errors import (
@@ -1381,14 +1382,209 @@ def test_execution_preconditions_fail_closed_before_executor_start(
     summary = scheduler.tick()
 
     stored = scheduler.get_job(submitted["id"])
-    assert stored["state"] == "blocked"
+    assert stored["state"] == "failed"
+    assert stored["attempt_count"] == 1
+    assert stored["cleanup_verified"] is True
     assert executor.starts == []
     assert len(adapter.calls) == 1
     attempt = scheduler.ledger.get("attempts", stored["attempt_id"])
-    assert attempt["state"] == "blocked"
+    assert attempt["state"] == "failed"
     assert attempt["cleanup_verified"] is True
     assert attempt["precondition_receipt"]["state"] == "blocked"
     assert summary["started_jobs"] == []
+
+
+def test_verified_precondition_failure_requeues_with_fresh_lease_identity(tmp_path: Path) -> None:
+    work = tmp_path / "work"
+    work.mkdir()
+    executor = FakeExecutor()
+    adapter = PreconditionAdapter(state="blocked")
+    scheduler = _scheduler(tmp_path, executor=executor, adapters=(adapter,))
+    scheduler.allocator.register_resource(
+        Resource(resource_id="cpu:test", host_id="test", kind="cpu", capacities={"cores": 2.0})
+    )
+    principal = _principal("jobs.submit", roots=(work,))
+    submitted = scheduler.dispatch(
+        "jobs.submit",
+        _job_args(
+            work,
+            key="job:precondition:retry",
+            resources=[{"kind": "cpu", "quantities": {"cores": 1.0}, "mode": "shared"}],
+            max_attempts=2,
+            interruption={"restart_safe": True},
+            preconditions=[{"name": "device.quiescence"}],
+        ),
+        principal,
+    )
+
+    first = scheduler.tick()
+    first_job = scheduler.get_job(submitted["id"])
+    assert first_job["state"] == "queued"
+    assert first_job["attempt_count"] == 1
+    assert first_job["attempt_id"] is None
+    assert first["started_jobs"] == []
+    assert scheduler.allocator.can_allocate(JobSpec.from_dict(first_job["spec"]).resources)
+
+    adapter.state = "verified"
+    second = scheduler.tick()
+    final = scheduler.get_job(submitted["id"])
+    assert final["state"] == "running"
+    assert final["attempt_count"] == 2
+    assert len(second["started_jobs"]) == 1
+    assert len(executor.starts) == 1
+    job_lease_operations = [
+        operation for operation in scheduler.ledger.operations()
+        if operation.get("operation") == "request_lease"
+        and str((operation.get("request") or {}).get("request_id", "")).startswith(
+            f"job:{submitted['id']}:attempt:"
+        )
+    ]
+    assert len(job_lease_operations) == 2
+    assert len({operation.get("idempotency_key") for operation in job_lease_operations}) == 2
+
+
+def test_cancel_repairs_only_proven_never_started_precondition_attempt(tmp_path: Path) -> None:
+    work = tmp_path / "work"
+    work.mkdir()
+    executor = FakeExecutor()
+    adapter = PreconditionAdapter(state="blocked")
+    scheduler = _scheduler(tmp_path, executor=executor, adapters=(adapter,))
+    principal = _principal("jobs.submit", roots=(work,))
+    submitted = scheduler.dispatch(
+        "jobs.submit",
+        _job_args(
+            work,
+            key="job:precondition:cancel-proof",
+            max_attempts=2,
+            interruption={"restart_safe": True},
+            preconditions=[{"name": "gpu.quiescence"}],
+        ),
+        principal,
+    )
+    scheduler.tick()
+    failed_attempt = next(
+        attempt for attempt in scheduler.ledger.list("attempts")
+        if attempt.get("job_id") == submitted["id"]
+    )
+    # Recreate the externally observed legacy state: cancel previously marked
+    # the job and attempt unknown despite retaining prelaunch cleanup evidence.
+    scheduler._update_job(submitted["id"], {"state": "unknown", "attempt_id": failed_attempt["id"], "cleanup_verified": False})
+    scheduler._mark_attempt_unknown(submitted["id"], failed_attempt["id"], "legacy cancel marked no-launch attempt unknown")
+
+    repaired = scheduler.cancel_job(submitted["id"], reason="reconcile-owned-job")
+
+    assert repaired["state"] == "cancelled"
+    assert repaired["cleanup_verified"] is True
+    repaired_attempt = scheduler.ledger.get("attempts", failed_attempt["id"])
+    assert repaired_attempt["state"] == "cancelled"
+    assert repaired_attempt["result"]["execution_outcome"] == "never_started"
+    assert executor.starts == []
+
+
+def test_cancel_does_not_trust_precondition_receipt_without_cleanup_proof(tmp_path: Path) -> None:
+    work = tmp_path / "work"
+    work.mkdir()
+    executor = FakeExecutor()
+    adapter = PreconditionAdapter(state="blocked")
+    scheduler = _scheduler(tmp_path, executor=executor, adapters=(adapter,))
+    principal = _principal("jobs.submit", roots=(work,))
+    submitted = scheduler.dispatch(
+        "jobs.submit",
+        _job_args(work, key="job:precondition:cancel-unproven", preconditions=[{"name": "gpu.quiescence"}]),
+        principal,
+    )
+    scheduler.tick()
+    attempt = next(item for item in scheduler.ledger.list("attempts") if item.get("job_id") == submitted["id"])
+    with scheduler.ledger.transaction() as tx:
+        current = tx.get("attempts", attempt["id"])
+        data = {key: value for key, value in current.items() if key != "_revision"}
+        data["cleanup_verified"] = False
+        tx.put("attempts", attempt["id"], data, current["_revision"])
+        job = tx.get("jobs", submitted["id"])
+        job_data = {key: value for key, value in job.items() if key != "_revision"}
+        job_data.update({"state": "unknown", "attempt_id": attempt["id"], "cleanup_verified": False})
+        tx.put("jobs", submitted["id"], job_data, job["_revision"])
+
+    repaired = scheduler.cancel_job(submitted["id"])
+
+    assert repaired["state"] == "unknown"
+    assert repaired["cleanup_verified"] is False
+
+
+def test_busy_nvidia_precondition_failure_reaches_clean_terminal_job(tmp_path: Path) -> None:
+    class FakeNvidiaRunner:
+        def __init__(self) -> None:
+            self.calls: list[list[str]] = []
+
+        def __call__(self, argv: list[str], *, timeout: float):
+            self.calls.append(list(argv))
+            if len(argv) > 1 and argv[1].startswith("--query-gpu="):
+                return type("Result", (), {
+                    "returncode": 0,
+                    "stdout": "0, GPU-test, NVIDIA L40S, 0000:01:00.0, 46080, 45000, 3\n",
+                    "stderr": "",
+                })()
+            if len(argv) > 1 and argv[1].startswith("--query-compute-apps="):
+                return type("Result", (), {
+                    "returncode": 0,
+                    "stdout": "No running processes found\n",
+                    "stderr": "",
+                })()
+            if argv[1:] == ["topo", "-m"]:
+                return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+            raise AssertionError(f"unexpected nvidia-smi command {argv!r}")
+
+    fake = FakeNvidiaRunner()
+    monotonic = [0.0]
+    nvidia = NvidiaAdapter(
+        runner=fake,
+        hostname=lambda: "test",
+        clock=lambda: monotonic[0],
+        sleeper=lambda delay: monotonic.__setitem__(0, monotonic[0] + delay),
+    )
+    work = tmp_path / "work"
+    work.mkdir()
+    executor = FakeExecutor()
+    scheduler = _scheduler(tmp_path, executor=executor, adapters=(nvidia,))
+    principal = _principal("jobs.submit", roots=(work,))
+    submitted = scheduler.dispatch(
+        "jobs.submit",
+        _job_args(
+            work,
+            key="job:precondition:busy-gpu-terminal",
+            resources=[{
+                "kind": "gpu",
+                "mode": "exclusive",
+                "quantities": {"memory_bytes": 512 * 1024 * 1024},
+                "selectors": {"resource_id": "gpu:test:GPU-test"},
+            }],
+            preconditions=[{
+                "name": "gpu.quiescence",
+                "parameters": {
+                    "consecutive_samples": 2,
+                    "interval_seconds": 1.0,
+                    "timeout_seconds": 1.0,
+                    "max_utilization_percent": 0,
+                },
+            }],
+        ),
+        principal,
+    )
+
+    summary = scheduler.tick()
+
+    job = scheduler.get_job(submitted["id"])
+    attempt = scheduler.ledger.get("attempts", job["attempt_id"])
+    assert job["state"] == "failed"
+    assert job["attempt_count"] == 1
+    assert job["cleanup_verified"] is True
+    assert attempt["state"] == "failed"
+    assert attempt["cleanup_verified"] is True
+    assert attempt["precondition_receipt"]["state"] == "blocked"
+    assert executor.starts == []
+    assert summary["started_jobs"] == []
+    assert scheduler.ledger.list("lease")[0]["state"] == "released"
+    assert monotonic[0] >= 1.0
 
 
 def test_verified_execution_precondition_is_durable_attempt_evidence(tmp_path: Path) -> None:

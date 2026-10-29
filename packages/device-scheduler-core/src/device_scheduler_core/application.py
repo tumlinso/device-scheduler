@@ -724,6 +724,52 @@ class Scheduler:
         job = self._get("jobs", job_id)
         return job
 
+    def _verified_never_started_precondition(
+        self, job: Mapping[str, Any], attempt: Mapping[str, Any] | None
+    ) -> bool:
+        """Accept cancellation only when durable evidence proves no launch and clean release."""
+        if not isinstance(attempt, Mapping):
+            return False
+        receipt = attempt.get("precondition_receipt")
+        if (
+            not isinstance(receipt, Mapping)
+            or attempt.get("job_id") != job.get("id", job.get("job_id"))
+            or receipt.get("state") != "blocked"
+            or attempt.get("started_at") is not None
+            or _handle(attempt.get("execution_handle")) is not None
+            or attempt.get("cleanup_verified") is not True
+            or attempt.get("state") not in {"blocked", "unknown"}
+            or job.get("lease_binding") in {"supervised", "protected"}
+            or job.get("reservation_phase_id")
+        ):
+            return False
+        start_operation_id = attempt.get("operation_id")
+        start_operation = self.ledger.operation(str(start_operation_id)) if start_operation_id else None
+        durable_receipts = start_operation.get("receipts") if isinstance(start_operation, Mapping) else None
+        start_receipt = (
+            durable_receipts[-1].get("receipt")
+            if isinstance(durable_receipts, list) and durable_receipts and isinstance(durable_receipts[-1], Mapping)
+            else start_operation.get("response") if isinstance(start_operation, Mapping) else None
+        )
+        precondition_proof = start_receipt.get("preconditions") if isinstance(start_receipt, Mapping) else None
+        if (
+            not isinstance(start_operation, Mapping)
+            or start_operation.get("operation") != "job.start"
+            or start_operation.get("status") != "failed"
+            or not isinstance(start_receipt, Mapping)
+            or not isinstance(precondition_proof, Mapping)
+            or precondition_proof.get("state") != "blocked"
+        ):
+            return False
+        lease_id = job.get("lease_id")
+        if not lease_id:
+            return True
+        try:
+            lease = self._get_lease(str(lease_id))
+        except Exception:
+            return False
+        return _state(lease.get("state")) == LeaseState.RELEASED.value
+
     def cancel_job(self, job_id: str, reason: str = "caller") -> dict[str, Any]:
         """Trusted, idempotent cleanup callback used by job and handoff control."""
         job = self.get_job(job_id)
@@ -734,6 +780,17 @@ class Scheduler:
         if not attempt_id:
             return self._update_job(job_id, {"state": "cancelled", "result": {"reason": reason}, "cleanup_verified": True})
         attempt = self.ledger.get("attempts", attempt_id)
+        if self._verified_never_started_precondition(job, attempt):
+            result = {
+                "state": "cancelled",
+                "reason": reason,
+                "execution_outcome": "never_started",
+                "precondition_receipt": _json_value(attempt.get("precondition_receipt") or {}),
+                "cleanup_verified": True,
+            }
+            self._store_attempt_result(job_id, str(attempt_id), result, state="cancelled", cleanup_verified=True)
+            self._release_job_lease(self.get_job(job_id), result)
+            return self.get_job(job_id)
         handle = _handle(attempt.get("execution_handle") if attempt else None)
         if self.executor is None or handle is None:
             self._mark_attempt_unknown(job_id, attempt_id, "execution handle unavailable during cancellation")
@@ -3113,12 +3170,13 @@ class Scheduler:
                 phase = self.allocator.phase_lease(reservation_id, phase_id, spec.resources)
                 lease = {"lease_id": None, "fencing_token": None, "reservation_phase_id": phase_id, "reservation_id": reservation_id, "allocations": phase.get("allocations", [])}
             else:
+                attempt_number = int(current.get("attempt_count", 0)) + 1
                 request = ResourceRequest(
-                    request_id=f"job:{job_id}",
+                    request_id=f"job:{job_id}:attempt:{attempt_number}",
                     owner_id=spec.owner_id,
                     requirements=spec.resources,
                     lease_ttl_seconds=max(float(spec.timeout_seconds) + 60.0, self.config.default_lease_ttl_seconds),
-                    idempotency_key=f"job-lease:{job_id}",
+                    idempotency_key=f"job-lease:{job_id}:attempt:{attempt_number}",
                 )
                 lease = _json_value(self.allocator.request_lease(request))
         attempt_id = str(uuid.uuid4())
@@ -3461,6 +3519,7 @@ class Scheduler:
             "reason": blocked_reason,
             "preconditions": _json_value(receipt),
             "cleanup_error": cleanup_error,
+            "cleanup_verified": cleanup_error is None,
         }
         with self.ledger.transaction() as tx:
             attempt = tx.get("attempts", attempt_id)
@@ -3478,14 +3537,41 @@ class Scheduler:
             job = tx.get("jobs", job_id)
             if job is not None:
                 job_data = _without_revision(job)
+                attempts_used = int(job_data.get("attempt_count", 1))
+                max_attempts = int((job_data.get("spec") or {}).get("max_attempts", 1))
+                exhausted = cleanup_error is None and attempts_used >= max_attempts
+                if exhausted:
+                    final_state = "failed"
+                    blocked_reason = "execution_precondition_unverified"
+                    operation_receipt.update({"state": "failed", "reason": blocked_reason})
                 job_data.update({
                     "state": final_state,
-                    "attempt_count": max(0, int(job_data.get("attempt_count", 1)) - 1),
                     "blocked_reason": blocked_reason,
                     "blocked_reason_code": str(receipt.get("state", "unknown")),
                     "cleanup_verified": cleanup_error is None,
                     "updated_at": now,
                 })
+                if exhausted:
+                    job_data.update({
+                        "result": {
+                            "reason": "execution_precondition_unverified",
+                            "precondition_receipt": _json_value(receipt),
+                            "cleanup_verified": True,
+                        },
+                        "blocked_reason": None,
+                    })
+                    exhausted_attempt = tx.get("attempts", attempt_id)
+                    if exhausted_attempt is not None:
+                        exhausted_data = _without_revision(exhausted_attempt)
+                        exhausted_data.update({
+                            "state": "failed",
+                            "result": job_data["result"],
+                        })
+                        tx.put("attempts", attempt_id, exhausted_data, exhausted_attempt[_REVISION])
+                elif cleanup_error is None:
+                    # Retain the failed attempt as audit evidence, but clear
+                    # the active attempt binding before the safe retry.
+                    job_data.update({"state": "queued", "attempt_id": None, "decision_id": None})
                 if cleanup_error is None:
                     job_data.update({"lease_id": None, "lease_fencing_token": None, "reservation_phase_id": None})
                 tx.put("jobs", job_id, job_data, job[_REVISION])
