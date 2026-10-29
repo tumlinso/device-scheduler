@@ -523,6 +523,71 @@ def test_cancel_stops_only_verified_unit_and_requires_empty_cgroup(tmp_path: Pat
     assert all(call[0] not in {"kill", "pkill"} for call in fake.calls)
 
 
+def test_cancel_stops_verified_active_exited_unit_with_residual_child(tmp_path: Path) -> None:
+    class ExitedWorkerWithCollector(FakeSystemd):
+        def __call__(self, argv, *, timeout, max_output_bytes=None):
+            result = super().__call__(argv, timeout=timeout, max_output_bytes=max_output_bytes)
+            if argv[0] == "systemctl" and "stop" in argv:
+                unit = argv[3]
+                cgroup = self.cgroup_root / self.units[unit]["ControlGroup"].lstrip("/")
+                (cgroup / "cgroup.procs").write_text("", encoding="ascii")
+                child = cgroup / "collector.scope"
+                (child / "cgroup.procs").write_text("", encoding="ascii")
+                (child / "cgroup.events").write_text("populated 0\n", encoding="ascii")
+            return result
+
+    root = tmp_path / "cgroup"
+    root.mkdir()
+    (root / "cgroup.controllers").write_text("cpu memory pids\n", encoding="ascii")
+    fake = ExitedWorkerWithCollector(root)
+    unit = fake.install("attempt-exited-with-collector")
+    properties = fake.units[unit]
+    properties.update(ActiveState="active", SubState="exited", ExecMainCode="1", ExecMainStatus="0")
+    cgroup = root / properties["ControlGroup"].lstrip("/")
+    (cgroup / "cgroup.procs").write_text("257\n", encoding="ascii")
+    child = cgroup / "collector.scope"
+    child.mkdir()
+    (child / "cgroup.procs").write_text("258\n", encoding="ascii")
+    (child / "cgroup.events").write_text("populated 1\n", encoding="ascii")
+    adapter = SystemdExecutionAdapter(runner=fake, cgroup_root=root)
+    handle = adapter.resolve(attempt_id="attempt-exited-with-collector")
+    assert handle is not None
+    before = adapter.managed_process_ids([handle])
+    assert before["state"] == "observed"
+    assert before["process_ids"] == [257, 258]
+    assert adapter.inspect(handle)["cleanup_verified"] is False
+
+    receipt = adapter.cancel(
+        handle,
+        operation_id="operation:exited-with-collector",
+        timeout_seconds=2,
+    )
+
+    assert any(call[:4] == ["systemctl", "--user", "stop", unit] for call in fake.calls)
+    assert receipt["state"] == "succeeded"
+    assert receipt["cleanup_verified"] is True
+    after = adapter.managed_process_ids([handle])
+    assert after["state"] == "observed"
+    assert after["process_ids"] == []
+
+
+def test_cancel_does_not_stop_verified_active_exited_unit_with_empty_cgroup(tmp_path: Path) -> None:
+    fake = FakeSystemd(tmp_path / "cgroup")
+    unit = fake.install("attempt-exited-empty")
+    fake.units[unit].update(ActiveState="active", SubState="exited", ExecMainCode="1", ExecMainStatus="0")
+    cgroup = tmp_path / "cgroup" / fake.units[unit]["ControlGroup"].lstrip("/")
+    (cgroup / "cgroup.events").write_text("populated 0\n", encoding="ascii")
+    adapter = SystemdExecutionAdapter(runner=fake, cgroup_root=tmp_path / "cgroup")
+    handle = adapter.resolve(attempt_id="attempt-exited-empty")
+    assert handle is not None
+
+    receipt = adapter.cancel(handle, operation_id="operation:exited-empty", timeout_seconds=1)
+
+    assert not any(call[:3] == ["systemctl", "--user", "stop"] for call in fake.calls)
+    assert receipt["state"] == "succeeded"
+    assert receipt["cleanup_verified"] is True
+
+
 def test_cancel_accepts_unloaded_unit_only_after_acknowledged_stop_and_removed_cgroup(tmp_path: Path) -> None:
     class UnloadingFakeSystemd(FakeSystemd):
         def __call__(self, argv, *, timeout, max_output_bytes=None):

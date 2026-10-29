@@ -1103,7 +1103,20 @@ class SystemdExecutionAdapter:
         unit_name = str(handle["unit_name"])
         active = props.get("ActiveState")
         stop_succeeded = False
-        if active == "active" and props.get("SubState") not in {"exited", "dead"}:
+        substate = props.get("SubState")
+        control_group = props.get("ControlGroup") or (handle.get("metadata") or {}).get("control_group")
+        # RemainAfterExit keeps the service unit active after its main worker
+        # exits. A profiler or other child may still be running in the unit's
+        # KillMode=control-group cgroup, so stop that exact verified invocation
+        # whenever the cgroup is not proven empty. If emptiness is unknown,
+        # stopping the invocation-bound unit is still the safe cleanup attempt;
+        # cleanup remains unknown unless the post-stop cgroup check proves empty.
+        exited_unit_has_residue = (
+            active == "active"
+            and substate == "exited"
+            and not self._cgroup_empty(control_group, active_state=active, substate=substate)
+        )
+        if active == "active" and (substate not in {"exited", "dead"} or exited_unit_has_residue):
             try:
                 response = self._call(
                     ["systemctl", "--user", "stop", unit_name],
