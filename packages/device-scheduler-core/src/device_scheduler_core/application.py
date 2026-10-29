@@ -2390,8 +2390,168 @@ class Scheduler:
         attempt_id = job.get("attempt_id")
         if not attempt_id or self.executor is None:
             raise UnsupportedCapabilityError("job recovery requires an execution adapter and attempt identity")
+        recovered = self._recover_cancelled_missing_unit(job, str(attempt_id))
+        if recovered is not None:
+            return recovered
         self._reconcile_one(job)
         return self.get_job(str(job.get("id", job.get("job_id"))))
+
+    def _recover_cancelled_missing_unit(
+        self, job: Mapping[str, Any], attempt_id: str
+    ) -> dict[str, Any] | None:
+        """Complete owner-requested cancellation only after fencing a vanished unit.
+
+        Automatic reconciliation deliberately does not call this path. It is
+        available only from the owner-authorized jobs.control recover action,
+        and only when a prior cancel operation proves that this exact invocation
+        was stopped but its cgroup cleanup could not yet be verified.
+        """
+        job_id = str(job.get("id", job.get("job_id")))
+        owner = str(job.get("owner", ""))
+        attempt = self.ledger.get("attempts", attempt_id)
+        handle = _handle(attempt.get("execution_handle") if isinstance(attempt, Mapping) else None)
+        if handle is None or handle.adapter_id != str(getattr(self.executor, "adapter_id", "")):
+            return None
+        metadata = handle.metadata or {}
+        invocation_id = metadata.get("invocation_id")
+        control_group = metadata.get("control_group")
+        description = metadata.get("description")
+        if not all(isinstance(value, str) and value for value in (invocation_id, control_group, description)):
+            return None
+
+        cancel_operation_id = f"cancel:{attempt_id}"
+        cancel_operation = self.ledger.operation(cancel_operation_id)
+        request = cancel_operation.get("request") if isinstance(cancel_operation, Mapping) else None
+        receipts = cancel_operation.get("receipts") if isinstance(cancel_operation, Mapping) else None
+        if (
+            not isinstance(cancel_operation, Mapping)
+            or cancel_operation.get("operation") != "job.cancel"
+            or cancel_operation.get("status") != "unknown"
+            or cancel_operation.get("owner") != owner
+            or not isinstance(request, Mapping)
+            or request.get("job_id") != job_id
+            or request.get("attempt_id") != attempt_id
+            or not isinstance(receipts, list)
+            or self.ledger.operation(f"collect:{attempt_id}") is not None
+        ):
+            return None
+        unit_name = handle.external_id
+        prior_stop_confirmed = any(
+            isinstance(item, Mapping)
+            and isinstance(item.get("receipt"), Mapping)
+            and item["receipt"].get("stop_requested") is True
+            and item["receipt"].get("cleanup_verified") is False
+            and item["receipt"].get("unit_name") == unit_name
+            and item["receipt"].get("invocation_id") == invocation_id
+            and item["receipt"].get("active_state") in {"inactive", "failed"}
+            and item["receipt"].get("substate") in {"dead", "failed"}
+            and isinstance(item["receipt"].get("evidence"), Mapping)
+            and item["receipt"]["evidence"].get("unit_description") == description
+            and item["receipt"]["evidence"].get("control_group") == control_group
+            for item in receipts
+        )
+        if not prior_stop_confirmed:
+            return None
+
+        resolve = getattr(self.executor, "resolve", None)
+        fence = getattr(self.executor, "fence_missing_attempt", None)
+        if not callable(resolve) or not callable(fence):
+            return None
+        try:
+            if resolve(attempt_id=attempt_id) is not None:
+                return None
+        except Exception:
+            return None
+
+        operation_id = f"job.cancelled-unit-recovery-fence:{attempt_id}"
+        intent = self._ensure_operation(
+            operation_id,
+            "job.cancelled_unit_recovery_fence",
+            {
+                "job_id": job_id,
+                "attempt_id": attempt_id,
+                "unit_name": unit_name,
+                "invocation_id": invocation_id,
+                "control_group": control_group,
+                "cancel_operation_id": cancel_operation_id,
+            },
+            owner,
+        )
+        saved_fence_operation = self.ledger.operation(operation_id)
+        saved_request = saved_fence_operation.get("request") if isinstance(saved_fence_operation, Mapping) else None
+        if (
+            not isinstance(saved_fence_operation, Mapping)
+            or saved_fence_operation.get("operation") != "job.cancelled_unit_recovery_fence"
+            or saved_fence_operation.get("owner") != owner
+            or not isinstance(saved_request, Mapping)
+            or saved_request.get("job_id") != job_id
+            or saved_request.get("attempt_id") != attempt_id
+            or saved_request.get("unit_name") != unit_name
+            or saved_request.get("invocation_id") != invocation_id
+            or saved_request.get("control_group") != control_group
+            or saved_request.get("cancel_operation_id") != cancel_operation_id
+        ):
+            return None
+        if intent.get("status") == "complete":
+            receipt = intent.get("receipt") or {}
+        else:
+            try:
+                value = fence(attempt_id=attempt_id)
+                receipt = dict(value) if isinstance(value, Mapping) else {
+                    "state": "unknown", "cleanup_verified": False,
+                    "reason": "adapter returned an invalid missing-unit fence receipt",
+                }
+            except Exception as exc:
+                receipt = {"state": "unknown", "cleanup_verified": False, "error": type(exc).__name__}
+            is_verified = receipt.get("fenced") is True and receipt.get("cleanup_verified") is True
+            self._record_operation(operation_id, receipt, status="complete" if is_verified else "unknown")
+
+        if receipt.get("state") == "running" and isinstance(receipt.get("execution_handle"), Mapping):
+            try:
+                resolved_handle = ExecutionHandle.from_dict(receipt["execution_handle"])
+            except ValidationError:
+                return None
+            self._persist_resolved_handle(
+                job_id, attempt_id, resolved_handle, expected_state="unknown"
+            )
+            return self.get_job(job_id)
+        if (
+            receipt.get("fenced") is not True
+            or receipt.get("cleanup_verified") is not True
+            or receipt.get("state") != "cancelled"
+            or receipt.get("unit_name") != unit_name
+            or receipt.get("control_group") != control_group
+        ):
+            return None
+
+        result = {
+            "state": "cancelled",
+            "execution_outcome": "unknown_but_inactive_and_fenced",
+            "cleanup_verified": True,
+            "recovery_fence_operation_id": operation_id,
+        }
+        try:
+            # Settle the admission claim before making the job terminal. If
+            # release fails, leave the job recoverable and capacity accounted.
+            self._release_job_lease(self.get_job(job_id), result)
+        except Exception as exc:
+            self._mark_attempt_unknown(
+                job_id,
+                attempt_id,
+                "execution is fenced but its resource claim is not released",
+                {
+                    "recovery_fence_operation_id": operation_id,
+                    "lease_release_error": type(exc).__name__,
+                },
+            )
+            return self.get_job(job_id)
+        stored = self._store_attempt_result(
+            job_id, attempt_id, result, state="cancelled", cleanup_verified=True,
+            expected_state="unknown",
+        )
+        if stored is False:
+            return self.get_job(job_id)
+        return self.get_job(job_id)
 
     def _wait_job(self, args: Mapping[str, Any], actor: Principal) -> dict[str, Any]:
         job_id = _required(args, "job_id")
@@ -4293,24 +4453,39 @@ class Scheduler:
             recovered.append({"demand_id": demand.get("demand_id"), "state": result.get("state")})
         return recovered
 
-    def _persist_resolved_handle(self, job_id: str, attempt_id: str, handle: ExecutionHandle) -> None:
+    def _persist_resolved_handle(
+        self,
+        job_id: str,
+        attempt_id: str,
+        handle: ExecutionHandle,
+        *,
+        expected_state: str | None = None,
+    ) -> bool | None:
         now = _iso(_now(self.clock))
         start_operation_id = f"start:{attempt_id}"
         with self.ledger.transaction() as tx:
             attempt = tx.get("attempts", attempt_id)
             if attempt is None:
                 raise NotFoundError(f"attempt {attempt_id!r} does not exist")
+            job = tx.get("jobs", job_id)
+            if expected_state is not None and (
+                job is None
+                or _state(job.get("state")) != expected_state
+                or job.get("attempt_id") != attempt_id
+                or _state(attempt.get("state")) != expected_state
+            ):
+                return False
             updated = _without_revision(attempt)
             updated.update({"state": "running", "execution_handle": handle.to_dict(), "started_at": handle.started_at.isoformat() if handle.started_at else now})
             tx.put("attempts", attempt_id, updated, attempt[_REVISION])
             operation = tx.operation(start_operation_id)
             if operation and operation.get("status") in {"intent", "unknown"}:
                 tx.record_receipt(start_operation_id, {"state": "running", "execution_handle": handle.to_dict(), "reconciled": True})
-            job = tx.get("jobs", job_id)
             if job is not None:
                 job_data = _without_revision(job)
                 job_data.update({"state": "running", "updated_at": now})
                 tx.put("jobs", job_id, job_data, job[_REVISION])
+        return True if expected_state is not None else None
 
     def _store_attempt_result(
         self,
@@ -4320,12 +4495,21 @@ class Scheduler:
         *,
         state: str,
         cleanup_verified: bool,
-    ) -> None:
+        expected_state: str | None = None,
+    ) -> bool | None:
         now = _iso(_now(self.clock))
         with self.ledger.transaction() as tx:
             attempt = tx.get("attempts", attempt_id)
             if attempt is None:
                 raise NotFoundError(f"attempt {attempt_id!r} does not exist")
+            job = tx.get("jobs", job_id)
+            if expected_state is not None and (
+                job is None
+                or _state(job.get("state")) != expected_state
+                or job.get("attempt_id") != attempt_id
+                or _state(attempt.get("state")) != expected_state
+            ):
+                return False
             attempt_data = _without_revision(attempt)
             attempt_data.update({"state": state, "result": dict(result), "cleanup_verified": cleanup_verified, "finished_at": now})
             tx.put("attempts", attempt_id, attempt_data, attempt[_REVISION])
@@ -4343,28 +4527,62 @@ class Scheduler:
                     },
                     status="complete" if cleanup_verified else "unknown",
                 )
-            job = tx.get("jobs", job_id)
             if job is not None:
                 job_data = _without_revision(job)
                 job_data.update({"state": state, "result": dict(result), "cleanup_verified": cleanup_verified, "updated_at": now, "blocked_reason": None})
                 tx.put("jobs", job_id, job_data, job[_REVISION])
                 tx.event(f"job.{state}", job_id, {"attempt_id": attempt_id, "cleanup_verified": cleanup_verified})
+        return True if expected_state is not None else None
 
     def _mark_attempt_unknown(self, job_id: str, attempt_id: str, reason: str, observation: Mapping[str, Any] | None = None) -> None:
         now = _iso(_now(self.clock))
         with self.ledger.transaction() as tx:
             attempt = tx.get("attempts", attempt_id)
+            job = tx.get("jobs", job_id)
+            if attempt is not None and attempt.get("job_id") != job_id:
+                return
+            if job is not None and job.get("attempt_id") != attempt_id:
+                return
+            claims_settled = self._job_cleanup_claims_settled(tx, job) if job is not None else False
+            if (
+                job is not None
+                and attempt is not None
+                and job.get("attempt_id") == attempt_id
+                and attempt.get("job_id") == job_id
+                and _state(attempt.get("state")) in _TERMINAL
+                and _state(job.get("state")) in _TERMINAL
+                and attempt.get("cleanup_verified") is True
+                and job.get("cleanup_verified") is True
+                and claims_settled
+            ):
+                return
             if attempt is not None:
                 attempt_data = _without_revision(attempt)
                 error = dict(attempt_data.get("error") or {})
                 error["reconciliation_reason"] = reason
                 attempt_data.update({"state": "unknown", "error": error, "observation": _json_value(observation or {}), "updated_at": now})
                 tx.put("attempts", attempt_id, attempt_data, attempt[_REVISION])
-            job = tx.get("jobs", job_id)
-            if job is not None and _state(job.get("state")) not in _TERMINAL:
+            if job is not None and (
+                _state(job.get("state")) not in _TERMINAL
+                or not (job.get("cleanup_verified") is True and claims_settled)
+            ):
                 job_data = _without_revision(job)
                 job_data.update({"state": "unknown", "blocked_reason": reason[:500], "cleanup_verified": False, "updated_at": now})
                 tx.put("jobs", job_id, job_data, job[_REVISION])
+
+    def _job_cleanup_claims_settled(self, tx: Any, job: Mapping[str, Any]) -> bool:
+        if job.get("lease_binding") in {"supervised", "protected"}:
+            return True
+        phase_id = job.get("reservation_phase_id")
+        reservation_id = job.get("reservation_id")
+        if phase_id and reservation_id:
+            phase = tx.get("reservation_phase", str(phase_id))
+            return bool(phase and phase.get("reservation_id") == reservation_id and phase.get("state") == "released")
+        lease_id = job.get("lease_id")
+        if lease_id:
+            lease = tx.get("lease", str(lease_id))
+            return bool(lease and lease.get("state") == LeaseState.RELEASED.value)
+        return True
 
     def _release_job_lease(self, job: Mapping[str, Any], receipt: Mapping[str, Any]) -> None:
         if job.get("lease_binding") == "supervised":

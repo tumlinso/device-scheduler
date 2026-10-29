@@ -1089,6 +1089,7 @@ class SystemdExecutionAdapter:
             or timeout_seconds <= 0
         ):
             raise ValueError("timeout_seconds must be positive")
+        cancel_deadline = time.monotonic() + float(timeout_seconds)
         handle = self._as_handle_data(handle)
         props, problem = self._verify_handle(handle)
         if problem:
@@ -1118,9 +1119,11 @@ class SystemdExecutionAdapter:
         )
         if active == "active" and (substate not in {"exited", "dead"} or exited_unit_has_residue):
             try:
+                remaining = max(0.01, cancel_deadline - time.monotonic())
+                drain_budget = min(2.0, remaining * 0.25)
                 response = self._call(
                     ["systemctl", "--user", "stop", unit_name],
-                    timeout=max(0.1, timeout_seconds),
+                    timeout=max(0.01, remaining - drain_budget),
                 )
             except ExecutionAdapterError as exc:
                 return {
@@ -1150,15 +1153,17 @@ class SystemdExecutionAdapter:
         # Verify against the original cgroup path and invocation instead of
         # converting a confirmed stop into an ambiguous unit lookup.
         post_props, post_problem = self._verify_handle(handle)
+        cleanup_recheck_allowed = False
         if not post_problem:
+            cleanup_recheck_allowed = True
             receipt = self.inspect(handle)
             cleanup_verified = bool(receipt.get("cleanup_verified"))
-        elif stop_succeeded and self._unit_is_not_found(unit_name):
-            cleanup_verified = self._cgroup_empty(
-                props.get("ControlGroup") or (handle.get("metadata") or {}).get("control_group"),
-                active_state="inactive",
-                substate="dead",
-            )
+        elif stop_succeeded and self._unit_is_not_found(
+            unit_name,
+            timeout=max(0.01, min(self._command_timeout, cancel_deadline - time.monotonic())),
+        ):
+            cleanup_recheck_allowed = True
+            cleanup_verified = False
             receipt = {
                 "state": "unknown",
                 "reason": "unit was unloaded after systemd acknowledged stop",
@@ -1180,6 +1185,18 @@ class SystemdExecutionAdapter:
                 "unit_name": unit_name,
                 "invocation_id": props.get("InvocationID"),
             }
+        if stop_succeeded and cleanup_recheck_allowed and not cleanup_verified:
+            drain_deadline = min(cancel_deadline, time.monotonic() + 2.0)
+            cleanup_verified = self._wait_cgroup_empty(
+                control_group,
+                deadline=drain_deadline,
+                active_state="inactive",
+                substate="dead",
+            )
+            if cleanup_verified:
+                receipt = {**receipt, "cleanup_recheck": "verified_empty_after_stop"}
+        if cleanup_verified:
+            receipt = {**receipt, "cleanup_verified": True}
         return {
             **receipt,
             "operation_id": operation_id,
@@ -1187,11 +1204,29 @@ class SystemdExecutionAdapter:
             "cleanup_verified": cleanup_verified,
         }
 
-    def _unit_is_not_found(self, unit_name: str) -> bool:
+    def _wait_cgroup_empty(
+        self,
+        control_group: str | None,
+        *,
+        deadline: float,
+        active_state: str,
+        substate: str,
+    ) -> bool:
+        """Wait briefly for an acknowledged stop to drain its cgroup."""
+        while True:
+            if self._cgroup_empty(control_group, active_state=active_state, substate=substate):
+                return True
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            time.sleep(min(0.05, remaining))
+
+    def _unit_is_not_found(self, unit_name: str, *, timeout: float | None = None) -> bool:
         """Distinguish an unloaded unit from an unavailable systemd manager."""
         try:
             result = self._call(
-                ["systemctl", "--user", "show", unit_name, "--property=LoadState"]
+                ["systemctl", "--user", "show", unit_name, "--property=LoadState"],
+                timeout=timeout,
             )
         except ExecutionAdapterError:
             return False

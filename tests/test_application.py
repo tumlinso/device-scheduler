@@ -11,6 +11,7 @@ import pytest
 
 from device_scheduler_adapters.sqlite import Ledger
 from device_scheduler_adapters.nvidia import NvidiaAdapter
+from device_scheduler_adapters.systemd import attempt_unit_name
 from device_scheduler_core.allocator import ResourceAllocator
 from device_scheduler_core.application import Scheduler, SchedulerConfig
 from device_scheduler_core.errors import (
@@ -159,6 +160,70 @@ class MissingUnitExecutor(FakeExecutor):
     def fence_missing_attempt(self, *, attempt_id: str) -> Mapping[str, Any]:
         self.fence_calls.append(attempt_id)
         return dict(self.fence_receipt)
+
+
+class StoppedThenMissingUnitExecutor(FakeExecutor):
+    adapter_id = "systemd-user-unit"
+
+    def __init__(self, *, cancel_invocation_matches: bool = True) -> None:
+        super().__init__()
+        self.unit_missing = False
+        self.fence_calls: list[str] = []
+        self.cancel_invocation_matches = cancel_invocation_matches
+
+    def start(self, spec: Any, *, attempt_id: str, execution_root: Path, execution_context: ExecutionContext | None = None) -> ExecutionHandle:
+        handle = super().start(spec, attempt_id=attempt_id, execution_root=execution_root, execution_context=execution_context)
+        handle = ExecutionHandle(
+            adapter_id=self.adapter_id,
+            external_id=attempt_unit_name(attempt_id),
+            identity=attempt_id,
+            started_at=NOW,
+            metadata={
+                **handle.metadata,
+                "invocation_id": f"invocation-{attempt_id}",
+                "description": f"Device Scheduler attempt {attempt_id}",
+                "control_group": f"/user.slice/{attempt_unit_name(attempt_id)}",
+            },
+        )
+        self.handles[attempt_id] = handle
+        return handle
+
+    def resolve(self, *, attempt_id: str) -> ExecutionHandle | None:
+        return None if self.unit_missing else super().resolve(attempt_id=attempt_id)
+
+    def inspect(self, handle: ExecutionHandle) -> Mapping[str, Any]:
+        if self.unit_missing:
+            return {
+                "state": "unknown", "cleanup_verified": False,
+                "reason": "unit is missing or unavailable",
+                "unit_name": handle.external_id,
+            }
+        return super().inspect(handle)
+
+    def cancel(self, handle: ExecutionHandle, *, operation_id: str, timeout_seconds: float) -> Mapping[str, Any]:
+        self.unit_missing = True
+        return {
+            "state": "failed", "cleanup_verified": False,
+            "operation_id": operation_id, "stop_requested": True,
+            "unit_name": handle.external_id,
+            "invocation_id": handle.metadata["invocation_id"] if self.cancel_invocation_matches else "different-invocation",
+            "active_state": "inactive", "substate": "dead",
+            "exit_code": 15,
+            "evidence": {
+                "unit_description": handle.metadata["description"],
+                "control_group": handle.metadata["control_group"],
+            },
+        }
+
+    def fence_missing_attempt(self, *, attempt_id: str) -> Mapping[str, Any]:
+        self.fence_calls.append(attempt_id)
+        return {
+            "state": "cancelled", "cleanup_verified": True, "fenced": True,
+            "execution_may_have_started": True,
+            "unit_name": attempt_unit_name(attempt_id),
+            "control_group": f"/user.slice/{attempt_unit_name(attempt_id)}",
+            "fence": "systemd-runtime-mask",
+        }
 
 
 class HostLeaseResourceAdapter:
@@ -721,6 +786,156 @@ def test_proven_prelaunch_rejection_is_terminal_and_completes_start_receipt(tmp_
     assert job["result"]["execution_started"] is False
     assert attempt["cleanup_verified"] is True
     assert scheduler.ledger.operation(attempt["operation_id"])["status"] == "complete"
+
+
+@pytest.mark.parametrize("fail_release_once", [False, True])
+def test_owner_recovery_fences_only_its_confirmed_stopped_missing_unit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fail_release_once: bool,
+) -> None:
+    work = tmp_path / "work"
+    work.mkdir()
+    executor = StoppedThenMissingUnitExecutor()
+    scheduler = _scheduler(tmp_path, executor=executor, adapters=(ObservedGpuAdapter(),))
+    owner = _principal("jobs.submit", "jobs.control", roots=(work,))
+    foreign = Principal(
+        "agent:two", actions=frozenset({"jobs.control"}),
+        execution_roots=(str(work),),
+    )
+    gpu_req = [{
+        "kind": "gpu", "selectors": {"resource_id": "gpu:host:GPU-test"},
+        "quantities": {"gpu_memory_bytes": 1}, "mode": "exclusive",
+    }]
+    submitted = scheduler.dispatch("jobs.submit", _job_args(work, resources=gpu_req), owner)
+    started = scheduler.tick()["started_jobs"][0]
+    assert started["state"] == "running"
+    lease_id = started["lease_id"]
+
+    cancelled = scheduler.dispatch("jobs.control", {
+        "job_id": submitted["id"], "action": "cancel",
+    }, owner)
+    assert cancelled["state"] == "unknown"
+    assert scheduler.allocator.get_lease(lease_id).state.value == "active"
+
+    scheduler.tick()
+    assert executor.fence_calls == []
+    assert scheduler.get_job(submitted["id"])["state"] == "unknown"
+    with pytest.raises(PermissionDeniedError):
+        scheduler.dispatch("jobs.control", {
+            "job_id": submitted["id"], "action": "recover",
+        }, foreign)
+    assert executor.fence_calls == []
+
+    original_release_job_lease = scheduler._release_job_lease
+    if fail_release_once:
+        def fail_release(_job, _receipt):
+            raise RuntimeError("fixture: lease release unavailable")
+
+        monkeypatch.setattr(scheduler, "_release_job_lease", fail_release)
+        failed_recovery = scheduler.dispatch("jobs.control", {
+            "job_id": submitted["id"], "action": "recover",
+        }, owner)
+        assert failed_recovery["state"] == "unknown"
+        assert failed_recovery["cleanup_verified"] is False
+        assert scheduler.allocator.get_lease(lease_id).state.value == "active"
+        monkeypatch.setattr(scheduler, "_release_job_lease", original_release_job_lease)
+
+    recovered = scheduler.dispatch("jobs.control", {
+        "job_id": submitted["id"], "action": "recover",
+    }, owner)
+    attempt = scheduler.ledger.get("attempts", started["attempt_id"])
+    recovery_operation = scheduler.ledger.operation(
+        f"job.cancelled-unit-recovery-fence:{started['attempt_id']}"
+    )
+    assert executor.fence_calls == [started["attempt_id"]]
+    assert scheduler.ledger.operation(f"collect:{started['attempt_id']}") is None
+    assert recovery_operation["status"] == "complete"
+    assert recovered["state"] == "cancelled"
+    assert recovered["cleanup_verified"] is True
+    assert recovered["result"]["execution_outcome"] == "unknown_but_inactive_and_fenced"
+    assert attempt["state"] == "cancelled"
+    assert attempt["cleanup_verified"] is True
+    assert scheduler.allocator.get_lease(lease_id).state.value == "released"
+    scheduler._mark_attempt_unknown(
+        submitted["id"], started["attempt_id"], "stale pre-fence observation",
+        {"state": "unknown", "cleanup_verified": False},
+    )
+    assert scheduler.get_job(submitted["id"])["state"] == "cancelled"
+    assert scheduler.ledger.get("attempts", started["attempt_id"])["state"] == "cancelled"
+
+
+def test_owner_recovery_does_not_fence_missing_unit_with_mismatched_cancel_invocation(tmp_path: Path) -> None:
+    work = tmp_path / "work"
+    work.mkdir()
+    executor = StoppedThenMissingUnitExecutor(cancel_invocation_matches=False)
+    scheduler = _scheduler(tmp_path, executor=executor, adapters=(ObservedGpuAdapter(),))
+    owner = _principal("jobs.submit", "jobs.control", roots=(work,))
+    gpu_req = [{
+        "kind": "gpu", "selectors": {"resource_id": "gpu:host:GPU-test"},
+        "quantities": {"gpu_memory_bytes": 1}, "mode": "exclusive",
+    }]
+    submitted = scheduler.dispatch("jobs.submit", _job_args(work, resources=gpu_req), owner)
+    started = scheduler.tick()["started_jobs"][0]
+    lease_id = started["lease_id"]
+    cancelled = scheduler.dispatch("jobs.control", {
+        "job_id": submitted["id"], "action": "cancel",
+    }, owner)
+    assert cancelled["state"] == "unknown"
+
+    recovered = scheduler.dispatch("jobs.control", {
+        "job_id": submitted["id"], "action": "recover",
+    }, owner)
+
+    assert recovered["state"] == "unknown"
+    assert executor.fence_calls == []
+    assert scheduler.allocator.get_lease(lease_id).state.value == "active"
+    assert scheduler.ledger.operation(
+        f"job.cancelled-unit-recovery-fence:{started['attempt_id']}"
+    ) is None
+
+
+def test_release_failure_reopens_terminal_attempt_when_internal_lease_is_still_active(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    work = tmp_path / "work"
+    work.mkdir()
+    executor = FakeExecutor()
+    scheduler = _scheduler(tmp_path, executor=executor, adapters=(ObservedGpuAdapter(),))
+    owner = _principal("jobs.submit", roots=(work,))
+    gpu_req = [{
+        "kind": "gpu", "selectors": {"resource_id": "gpu:host:GPU-test"},
+        "quantities": {"gpu_memory_bytes": 1}, "mode": "exclusive",
+    }]
+    submitted = scheduler.dispatch("jobs.submit", _job_args(work, resources=gpu_req), owner)
+    started = scheduler.tick()["started_jobs"][0]
+    attempt_id = started["attempt_id"]
+    lease_id = started["lease_id"]
+    result = {
+        "state": "cancelled", "execution_outcome": "unknown_but_inactive_and_fenced",
+        "cleanup_verified": True,
+    }
+    scheduler._store_attempt_result(
+        submitted["id"], attempt_id, result, state="cancelled", cleanup_verified=True,
+    )
+    original_release_job_lease = scheduler._release_job_lease
+
+    def fail_release(_job, _receipt):
+        raise RuntimeError("fixture: lease release failed after terminal cleanup")
+
+    monkeypatch.setattr(scheduler, "_release_job_lease", fail_release)
+    with pytest.raises(RuntimeError) as exc:
+        scheduler._release_job_lease(scheduler.get_job(submitted["id"]), result)
+    monkeypatch.setattr(scheduler, "_release_job_lease", original_release_job_lease)
+    scheduler._mark_attempt_unknown(
+        submitted["id"], attempt_id, "resource claim release failed",
+        {"lease_release_error": type(exc.value).__name__},
+    )
+
+    job = scheduler.get_job(submitted["id"])
+    attempt = scheduler.ledger.get("attempts", attempt_id)
+    assert job["state"] == "unknown"
+    assert job["cleanup_verified"] is False
+    assert attempt["state"] == "unknown"
+    assert scheduler.allocator.get_lease(lease_id).state.value == "active"
 
 
 @pytest.mark.parametrize(

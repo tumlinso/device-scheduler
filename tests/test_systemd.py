@@ -3,7 +3,9 @@ from __future__ import annotations
 import subprocess
 import sys
 import venv
+from threading import Timer
 from pathlib import Path
+from time import monotonic
 from types import SimpleNamespace
 
 import pytest
@@ -615,6 +617,66 @@ def test_cancel_accepts_unloaded_unit_only_after_acknowledged_stop_and_removed_c
     assert receipt["cleanup_verified"] is True
     assert receipt["state"] == "unknown"
     assert receipt["reason"] == "unit was unloaded after systemd acknowledged stop"
+
+
+def test_cancel_rechecks_cgroup_until_acknowledged_stop_finishes_draining(tmp_path: Path) -> None:
+    class DelayedDrainSystemd(FakeSystemd):
+        timer: Timer | None = None
+
+        def __call__(self, argv, *, timeout, max_output_bytes=None):
+            result = super().__call__(argv, timeout=timeout, max_output_bytes=max_output_bytes)
+            if argv[0] == "systemctl" and "stop" in argv:
+                unit = argv[3]
+                cgroup = self.cgroup_root / self.units[unit]["ControlGroup"].lstrip("/")
+                (cgroup / "cgroup.events").write_text("populated 1\n", encoding="ascii")
+                self.timer = Timer(
+                    0.08,
+                    lambda: (cgroup / "cgroup.events").write_text("populated 0\n", encoding="ascii"),
+                )
+                self.timer.daemon = True
+                self.timer.start()
+            return result
+
+    fake = DelayedDrainSystemd(tmp_path / "cgroup")
+    fake.install("attempt-delayed-drain")
+    adapter = SystemdExecutionAdapter(runner=fake, cgroup_root=tmp_path / "cgroup")
+    handle = adapter.resolve(attempt_id="attempt-delayed-drain")
+    assert handle is not None
+    started = monotonic()
+
+    receipt = adapter.cancel(handle, operation_id="operation:delayed-drain", timeout_seconds=1)
+
+    if fake.timer is not None:
+        fake.timer.join(timeout=1)
+    assert monotonic() - started < 0.8
+    assert receipt["state"] == "succeeded"
+    assert receipt["cleanup_verified"] is True
+    assert receipt["cleanup_recheck"] == "verified_empty_after_stop"
+    assert len([call for call in fake.calls if call[:3] == ["systemctl", "--user", "stop"]]) == 1
+
+
+def test_cancel_keeps_cgroup_residue_unknown_after_bounded_drain_wait(tmp_path: Path) -> None:
+    class NeverDrainsSystemd(FakeSystemd):
+        def __call__(self, argv, *, timeout, max_output_bytes=None):
+            result = super().__call__(argv, timeout=timeout, max_output_bytes=max_output_bytes)
+            if argv[0] == "systemctl" and "stop" in argv:
+                unit = argv[3]
+                cgroup = self.cgroup_root / self.units[unit]["ControlGroup"].lstrip("/")
+                (cgroup / "cgroup.events").write_text("populated 1\n", encoding="ascii")
+            return result
+
+    fake = NeverDrainsSystemd(tmp_path / "cgroup")
+    fake.install("attempt-never-drains")
+    adapter = SystemdExecutionAdapter(runner=fake, cgroup_root=tmp_path / "cgroup")
+    handle = adapter.resolve(attempt_id="attempt-never-drains")
+    assert handle is not None
+    started = monotonic()
+
+    receipt = adapter.cancel(handle, operation_id="operation:never-drains", timeout_seconds=0.4)
+
+    assert monotonic() - started < 0.7
+    assert receipt["cleanup_verified"] is False
+    assert len([call for call in fake.calls if call[:3] == ["systemctl", "--user", "stop"]]) == 1
 
 
 def test_cancel_uses_persisted_cgroup_when_terminal_unit_clears_control_group(tmp_path: Path) -> None:
