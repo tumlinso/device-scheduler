@@ -64,6 +64,11 @@ class DeviceSchedulerClient:
             if isinstance(wait_s, bool) or not isinstance(wait_s, (int, float)) or not 0 <= wait_s <= 300:
                 raise ValueError("job wait timeout must be from 0 through 300 seconds")
             timeout = max(timeout, float(wait_s) + 10)
+        elif operation == "leases.demand" and payload.get("action", "request") in {"request", "wait"}:
+            wait_s = payload.get("wait_seconds", 0)
+            if isinstance(wait_s, bool) or not isinstance(wait_s, (int, float)) or not 0 <= wait_s <= 30:
+                raise ValueError("priority lease demand wait must be from 0 through 30 seconds")
+            timeout = max(timeout, float(wait_s) + 10)
 
         http_client = self._http_client_factory(
             headers={"Authorization": f"Bearer {token}"},

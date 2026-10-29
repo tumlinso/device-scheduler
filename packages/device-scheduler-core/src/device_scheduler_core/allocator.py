@@ -22,6 +22,7 @@ from .models import (
     AllocationMode,
     Lease,
     LeaseState,
+    LeaseUsage,
     Resource,
     ResourceAllocation,
     ResourceRequest,
@@ -518,6 +519,146 @@ class ResourceAllocator:
             lease = self._put_updated(tx, "lease", lease_id, lease)
             tx.event("lease_released", lease_id, {"receipt": dict(receipt)})
             return lease
+
+    def release_unissued_demand_lease(
+        self,
+        lease_id: str,
+        fencing_token: int,
+        *,
+        demand_key: str,
+        demand_id: str,
+        owner_id: str,
+        idempotency_key: str,
+        allocator_operation_id: str,
+        failed_baseline_operation_id: str,
+        baseline_operation_id: str,
+        release_receipt: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Release an unknown GPU grant only when its priority demand never issued it.
+
+        The caller must first persist a fresh, successful idle baseline. This
+        narrow transition is for a grant whose durable demand remains pending;
+        it does not authorize recovery of arbitrary unknown external leases.
+        """
+        with self.ledger.transaction() as tx:
+            lease = self._lease_record(tx, lease_id)
+            self._assert_fencing_token(lease, fencing_token)
+            demand = tx.get("lease_demands", demand_key)
+            allocator_operation = tx.operation(allocator_operation_id)
+            failed_operation = tx.operation(failed_baseline_operation_id)
+            operation = tx.operation(baseline_operation_id)
+            receipts = operation.get("receipts") if isinstance(operation, Mapping) else None
+            observed = (
+                receipts[-1].get("receipt")
+                if isinstance(receipts, list) and receipts and isinstance(receipts[-1], Mapping)
+                else None
+            )
+            failed_receipts = failed_operation.get("receipts") if isinstance(failed_operation, Mapping) else None
+            failed_observation = (
+                failed_receipts[-1].get("receipt")
+                if isinstance(failed_receipts, list) and failed_receipts and isinstance(failed_receipts[-1], Mapping)
+                else None
+            )
+            request = allocator_operation.get("request") if isinstance(allocator_operation, Mapping) else None
+            demand_request = demand.get("request") if isinstance(demand, Mapping) else None
+            demand_created = demand.get("created_at") if isinstance(demand, Mapping) else None
+            request_created = allocator_operation.get("created_at") if isinstance(allocator_operation, Mapping) else None
+            failed_request = failed_operation.get("request") if isinstance(failed_operation, Mapping) else None
+            failed_created = failed_operation.get("created_at") if isinstance(failed_operation, Mapping) else None
+            allocator_response = allocator_operation.get("response") if isinstance(allocator_operation, Mapping) else None
+            expected_resources = sorted(
+                str(item.get("resource_id")) for item in lease.get("allocations", ())
+                if isinstance(item, Mapping)
+            )
+            if (
+                lease.get("state") != LeaseState.UNKNOWN.value
+                or lease.get("owner_id") != owner_id
+                or lease.get("usage", LeaseUsage.EXTERNAL.value) != LeaseUsage.EXTERNAL.value
+                or lease.get("request_id") != (request or {}).get("request_id")
+                or not isinstance(lease.get("request_id"), str)
+                or not lease.get("request_id").startswith(demand_id)
+                or lease.get("reservation_id") is not None
+                or lease.get("protected") is True
+                or not isinstance(demand, Mapping)
+                or demand.get("state") not in {"pending", "cancelled", "expired"}
+                or demand.get("owner") != owner_id
+                or demand.get("demand_id") != demand_id
+                or demand.get("lease") is not None
+                or not isinstance(demand_request, Mapping)
+                or not isinstance(request, Mapping)
+                or allocator_operation.get("operation") != "request_lease"
+                or allocator_operation.get("status") != "complete"
+                or allocator_operation.get("owner") != owner_id
+                or allocator_operation.get("idempotency_key") != idempotency_key
+                or not isinstance(allocator_response, Mapping)
+                or allocator_response.get("lease_id") != lease_id
+                or request.get("request_id") != lease.get("request_id")
+                or request.get("owner_id") != owner_id
+                or request.get("requirements") != demand_request.get("requirements")
+                or request.get("lease_ttl_seconds") != demand_request.get("lease_ttl_seconds")
+                or not isinstance(demand_created, str)
+                or not isinstance(request_created, str)
+                or request_created < demand_created
+                or not isinstance(failed_request, Mapping)
+                or failed_request.get("lease_id") != lease_id
+                or not isinstance(failed_created, str)
+                or failed_created < demand_created
+                or not isinstance(failed_operation, Mapping)
+                or failed_operation.get("operation") != "lease.capture_baseline"
+                or failed_operation.get("status") != "unknown"
+                or failed_operation.get("owner") != owner_id
+                or not isinstance(failed_operation.get("request"), Mapping)
+                or failed_operation["request"].get("lease_id") != lease_id
+                or not isinstance(failed_observation, Mapping)
+                or failed_observation.get("lease_id") not in (None, lease_id)
+                or failed_observation.get("verified") is True
+                or failed_observation.get("state") not in {"busy", "blocked", "unknown"}
+                or not isinstance(operation, Mapping)
+                or operation.get("operation") != "lease.pregrant_recovery_baseline"
+                or operation.get("status") != "complete"
+                or not isinstance(operation.get("request"), Mapping)
+                or operation["request"].get("demand_id") != demand_id
+                or operation["request"].get("failed_baseline_operation_id") != failed_baseline_operation_id
+                or not isinstance(observed, Mapping)
+                or observed.get("state") != "observed"
+                or observed.get("verified") is not True
+                or observed.get("lease_id") != lease_id
+                or observed.get("fencing_token") != fencing_token
+                or observed.get("resource_ids") != expected_resources
+                or observed.get("operation_id") != baseline_operation_id
+                or not isinstance(observed.get("baseline"), Mapping)
+                or release_receipt.get("verified") is not True
+                or release_receipt.get("lease_id") != lease_id
+                or release_receipt.get("fencing_token") != fencing_token
+                or sorted(release_receipt.get("resource_ids", ())) != expected_resources
+                or release_receipt.get("unissued_demand_id") != demand_id
+                or release_receipt.get("allocator_operation_id") != allocator_operation_id
+                or release_receipt.get("failed_baseline_operation_id") != failed_baseline_operation_id
+                or release_receipt.get("baseline_operation_id") != baseline_operation_id
+            ):
+                raise ConflictError("unknown lease does not satisfy the unissued priority-demand recovery proof")
+            if tx.get("lease_evidence", lease_id) is not None:
+                raise ConflictError("unknown lease already has external reclamation evidence")
+            lease["state"] = LeaseState.RELEASED.value
+            lease["release_receipt"] = dict(release_receipt)
+            lease.pop("reconciliation_reason", None)
+            released = self._put_updated(tx, "lease", lease_id, lease)
+            demand_data = _plain(demand)
+            if demand_data.get("state") == "pending":
+                demand_data["grant_attempt"] = int(demand_data.get("grant_attempt", 0)) + 1
+            demand_data["last_pregrant_recovery"] = {
+                "lease_id": lease_id,
+                "baseline_operation_id": baseline_operation_id,
+                "released_at": self._now().isoformat(),
+            }
+            demand_data.pop("pregrant_recovery_retry_after", None)
+            demand_data["updated_at"] = self._now().isoformat()
+            tx.put("lease_demands", demand_key, demand_data, demand[_REVISION])
+            tx.event("lease_unissued_pregrant_released", lease_id, {
+                "demand_id": demand_id,
+                "baseline_operation_id": baseline_operation_id,
+            })
+            return self._lease_model(released).to_dict()
 
     def expire_due(self) -> list[str]:
         with self.ledger.transaction() as tx:

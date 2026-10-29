@@ -71,12 +71,14 @@ unmanaged processes safe.
 ## Interactive leases, background packets and forecast windows
 
 `leases.request` remains fail-fast. Interactive agents with the `leases.demand`
-grant and a priority ceiling of at least 70 can use the durable demand API; the
-Scheduler automatically interrupts only explicitly flexible background jobs
-that can contribute to the requested capacity. It grants the lease after the
-Scheduler verifies process cleanup and releases the victim lease. A demand is
-owner-scoped, idempotent by `demand_id`, and expires after one hour if still
-pending. Repeating an expired or cancelled identifier never recreates work.
+grant and a priority ceiling of at least 70 can use the durable demand API. A
+request records the demand and returns its current state; scheduler
+reconciliation handles preemption and grants only after verified cleanup. It
+interrupts only explicitly flexible background jobs that can contribute to the
+requested capacity. A demand is owner-scoped, idempotent by `demand_id`, and
+expires after one hour if still pending. `wait` only polls the recorded state;
+it does not run scheduler work. Repeating an expired or cancelled identifier
+never recreates work.
 
 ```python
 demand = await client.request_priority_lease_demand(

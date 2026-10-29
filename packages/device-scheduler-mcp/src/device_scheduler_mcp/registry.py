@@ -40,7 +40,7 @@ DESCRIPTIONS = {
     "resources.forecast": "Forecast advisory resource windows without reserving capacity.",
     "access.inspect": "Show this caller's effective scheduler access and resource scope.",
     "leases.request": "Request an atomic resource lease using the caller's granted scope.",
-    "leases.demand": "Durably request an interactive lease and preempt eligible flexible background jobs after verified cleanup.",
+    "leases.demand": "Create or inspect an owner-scoped interactive lease demand; scheduler reconciliation preempts eligible flexible background jobs and grants only after verified cleanup.",
     "leases.get": "Inspect one resource lease and its reclamation state.",
     "leases.list": "List leases visible to the authenticated principal.",
     "leases.renew": "Renew an owned lease within its grant and policy limits.",

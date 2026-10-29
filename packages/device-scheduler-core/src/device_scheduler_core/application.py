@@ -325,7 +325,9 @@ class Scheduler:
         self._authorize(actor, canonical)
         # Waiting only polls canonical state. It does not retain the process lock,
         # so the background tick can observe and complete the same job.
-        lock = _NullContext() if canonical in {"jobs.wait", "resources.list", "leases.request", "resources.forecast"} or (canonical == "leases.demand" and args.get("action") == "wait") else self._lock
+        lock = _NullContext() if canonical in {
+            "jobs.wait", "resources.list", "leases.request", "leases.demand", "resources.forecast"
+        } else self._lock
         try:
             with lock:
                 result = self._dispatch(canonical, dict(args), actor)
@@ -924,78 +926,147 @@ class Scheduler:
             request = ResourceRequest.from_dict(data)
             if request.owner_id != actor.principal_id and not self._has(actor, "leases.demand:any_owner"):
                 raise PermissionDeniedError("priority lease demand owner must match the authenticated principal")
-            record = self.ledger.get("lease_demands", key)
-            if record is None:
-                now = _now(self.clock)
-                record = self.ledger.put("lease_demands", key, {
-                    "demand_id": demand_id, "owner": request.owner_id,
-                    "request": request.to_dict(), "state": "pending",
-                    "created_at": _iso(now), "updated_at": _iso(now),
-                    "expires_at": _iso(now + timedelta(hours=1)),
-                })
-            elif record.get("request") != request.to_dict():
-                raise ConflictError("demand_id was already used for a different request")
-            return self._process_lease_demand(key)
+            with self._lock:
+                record = self.ledger.get("lease_demands", key)
+                if record is None:
+                    now = _now(self.clock)
+                    record = self.ledger.put("lease_demands", key, {
+                        "demand_id": demand_id, "owner": request.owner_id,
+                        "request": request.to_dict(), "state": "pending",
+                        "grant_attempt": 0,
+                        "created_at": _iso(now), "updated_at": _iso(now),
+                        "expires_at": _iso(now + timedelta(hours=1)),
+                    })
+                elif record.get("request") != request.to_dict():
+                    raise ConflictError("demand_id was already used for a different request")
+            return self._wait_for_lease_demand(key, args.get("wait_seconds", 0))
         record = self.ledger.get("lease_demands", key)
         if record is None:
             raise NotFoundError("priority lease demand does not exist")
         if record.get("owner") != actor.principal_id and not self._has(actor, "leases.demand:any_owner"):
             raise PermissionDeniedError("priority lease demand belongs to another principal")
         if action == "cancel":
-            if record.get("state") == "granted":
-                raise ConflictError("a granted priority lease demand cannot be cancelled; release its lease")
-            return self._update("lease_demands", key, {"state": "cancelled", "updated_at": _iso(_now(self.clock))})
+            with self.ledger.transaction() as tx:
+                current = tx.get("lease_demands", key)
+                if current is None:
+                    raise NotFoundError("priority lease demand does not exist")
+                if current.get("state") == "granted":
+                    raise ConflictError("a granted priority lease demand cannot be cancelled; release its lease")
+                if current.get("state") == "pending":
+                    data = _without_revision(current)
+                    data.update({"state": "cancelled", "updated_at": _iso(_now(self.clock))})
+                    tx.put("lease_demands", key, data, current[_REVISION])
+                    tx.event("lease_demand_cancelled", key, {"demand_id": demand_id})
+                    return data
+                return _without_revision(current)
         if action == "get":
             return _without_revision(record)
         timeout = args.get("wait_seconds", 0)
         if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not 0 <= timeout <= 30:
             raise ValidationError("wait_seconds must be between 0 and 30")
-        deadline = self._monotonic() + float(timeout)
+        return self._wait_for_lease_demand(key, timeout)
+
+    def _wait_for_lease_demand(self, key: str, timeout: Any) -> dict[str, Any]:
+        if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not 0 <= timeout <= 30:
+            raise ValidationError("wait_seconds must be between 0 and 30")
+        deadline = time.monotonic() + float(timeout)
         while True:
-            record = self._process_lease_demand(key)
-            if record.get("state") != "pending" or self._monotonic() >= deadline:
-                return record
-            time.sleep(min(0.1, max(0.0, deadline - self._monotonic())))
+            record = self.ledger.get("lease_demands", key)
+            if record is None:
+                raise NotFoundError("priority lease demand does not exist")
+            if record.get("state") != "pending" or time.monotonic() >= deadline:
+                return _without_revision(record)
+            time.sleep(min(0.1, max(0.0, deadline - time.monotonic())))
 
     def _process_lease_demand(self, key: str) -> dict[str, Any]:
-        # Demand processing can cancel jobs and create leases. Serialize it
-        # with cancellation and tick reconciliation so cancel can never be
-        # overwritten by an in-flight grant.
-        with self._lock:
-            return self._process_lease_demand_locked(key)
+        # Tick serializes its reconciliation pass; do not hold the global
+        # dispatch lock while doing slow device discovery or verified cleanup.
+        return self._process_lease_demand_locked(key)
 
     def _process_lease_demand_locked(self, key: str) -> dict[str, Any]:
         record = self.ledger.get("lease_demands", key)
         if record is None:
             raise NotFoundError("priority lease demand does not exist")
         state = str(record.get("state"))
+        if state in {"cancelled", "expired"}:
+            self._recover_unissued_demand_lease(key, record)
+            return _without_revision(self.ledger.get("lease_demands", key) or record)
         if state != "pending":
             return _without_revision(record)
         expires_at = _optional_time(record.get("expires_at"))
         if expires_at is None or expires_at <= _now(self.clock):
             return self._update("lease_demands", key, {"state": "expired", "updated_at": _iso(_now(self.clock))})
-        request = ResourceRequest.from_dict(record["request"])
+        # A failed external-baseline attempt can leave a lease unknown before
+        # the caller ever receives it. Reclaim only that demand's exact,
+        # durably proven unissued grant after a fresh trusted idle baseline.
+        if self._recover_unissued_demand_lease(key, record):
+            return _without_revision(self.ledger.get("lease_demands", key) or record)
+        request_data = dict(record["request"])
+        grant_attempt = int(record.get("grant_attempt", 0))
+        if grant_attempt:
+            internal_key = f"{record['demand_id']}:grant:{grant_attempt}"
+            request_data.update({"request_id": internal_key, "idempotency_key": internal_key})
+        request = ResourceRequest.from_dict(request_data)
         try:
             lease = self._request_lease({"request": request.to_dict(), "idempotency_key": request.idempotency_key}, Principal(
                 principal_id=request.owner_id, actions=frozenset({"leases.request", "leases.request:any_owner"}), max_priority=100
             ))
         except ConflictError:
             lease = None
+        except ReconciliationRequiredError:
+            # The request may have created a fenced, unknown lease after a
+            # baseline timeout. Leave the durable demand pending; the next
+            # scheduler tick can attempt the scoped pregrant recovery.
+            return _without_revision(self.ledger.get("lease_demands", key) or record)
         if lease is None:
-            self._preempt_for_lease_demand(request, record)
-            expires_at = _optional_time(record.get("expires_at"))
+            current = self.ledger.get("lease_demands", key)
+            if not isinstance(current, Mapping) or current.get("state") != "pending":
+                return _without_revision(current or record)
+            expires_at = _optional_time(current.get("expires_at"))
             if expires_at is None or expires_at <= _now(self.clock):
                 return self._update("lease_demands", key, {"state": "expired", "updated_at": _iso(_now(self.clock))})
+            self._preempt_for_lease_demand(request, current)
+            current = self.ledger.get("lease_demands", key)
+            if not isinstance(current, Mapping) or current.get("state") != "pending":
+                return _without_revision(current or record)
             try:
                 lease = self._request_lease({"request": request.to_dict(), "idempotency_key": request.idempotency_key}, Principal(
                     principal_id=request.owner_id, actions=frozenset({"leases.request", "leases.request:any_owner"}), max_priority=100
                 ))
             except ConflictError:
                 lease = None
+            except ReconciliationRequiredError:
+                return _without_revision(self.ledger.get("lease_demands", key) or record)
         if lease is None:
-            return _without_revision(record)
-        expires_at = _optional_time(record.get("expires_at"))
-        if expires_at is None or expires_at <= _now(self.clock):
+            return _without_revision(self.ledger.get("lease_demands", key) or record)
+        lease_record = _plain_lease(lease)
+        commit_state = "pending"
+        with self.ledger.transaction() as tx:
+            current = tx.get("lease_demands", key)
+            if current is None:
+                raise NotFoundError("priority lease demand does not exist")
+            expires_at = _optional_time(current.get("expires_at"))
+            if current.get("state") == "pending" and expires_at is not None and expires_at > _now(self.clock):
+                data = _without_revision(current)
+                data.update({"state": "granted", "lease": _json_value(lease), "updated_at": _iso(_now(self.clock))})
+                tx.put("lease_demands", key, data, current[_REVISION])
+                tx.event("lease_demand_granted", key, {
+                    "demand_id": current.get("demand_id"), "lease_id": lease_record.get("lease_id"),
+                })
+                commit_state = "granted"
+            else:
+                if current.get("state") == "pending":
+                    data = _without_revision(current)
+                    data.update({"state": "expired", "updated_at": _iso(_now(self.clock))})
+                    tx.put("lease_demands", key, data, current[_REVISION])
+                    current = data
+                commit_state = str(current.get("state"))
+                record = _without_revision(current)
+        if commit_state == "granted":
+            return _without_revision(self.ledger.get("lease_demands", key) or record)
+        # Cancellation or expiry won the durable state race. Release the late
+        # allocation with its verified external baseline before returning.
+        if commit_state in {"cancelled", "expired"}:
             lease_record = _plain_lease(lease)
             cleanup: Mapping[str, Any]
             try:
@@ -1009,13 +1080,132 @@ class Scheduler:
                 )
             except Exception as exc:
                 cleanup = {"state": "unknown", "cleanup_verified": False, "error": type(exc).__name__}
-            return self._update("lease_demands", key, {
-                "state": "expired", "late_grant_cleanup": _json_value(cleanup),
-                "updated_at": _iso(_now(self.clock)),
-            })
-        return self._update("lease_demands", key, {
-            "state": "granted", "lease": _json_value(lease), "updated_at": _iso(_now(self.clock))
-        })
+            with self.ledger.transaction() as tx:
+                current = tx.get("lease_demands", key)
+                if current is not None and current.get("state") == commit_state:
+                    data = _without_revision(current)
+                    data.update({"late_grant_cleanup": _json_value(cleanup), "updated_at": _iso(_now(self.clock))})
+                    tx.put("lease_demands", key, data, current[_REVISION])
+                    return data
+        return _without_revision(self.ledger.get("lease_demands", key) or record)
+
+    def _recover_unissued_demand_lease(self, key: str, demand: Mapping[str, Any]) -> bool:
+        """Reclaim only a durable failed-baseline lease never granted to its demand owner."""
+        state = demand.get("state")
+        if state not in {"pending", "cancelled", "expired"} or demand.get("lease") is not None:
+            return False
+        retry_after = _optional_time(demand.get("pregrant_recovery_retry_after"))
+        if retry_after is not None and retry_after > _now(self.clock):
+            return False
+        demand_id = str(demand.get("demand_id") or "")
+        owner = str(demand.get("owner") or "")
+        attempt = int(demand.get("grant_attempt", 0))
+        request_key = demand_id if attempt == 0 else f"{demand_id}:grant:{attempt}"
+        allocator_operation = next((
+            item for item in self.ledger.operations()
+            if item.get("operation") == "request_lease"
+            and item.get("owner") == owner
+            and item.get("idempotency_key") == request_key
+            and item.get("status") == "complete"
+        ), None)
+        if not isinstance(allocator_operation, Mapping):
+            return False
+        allocator_response = allocator_operation.get("response")
+        lease_id = allocator_response.get("lease_id") if isinstance(allocator_response, Mapping) else None
+        if not isinstance(lease_id, str) or not lease_id:
+            return False
+        lease = self.ledger.get("lease", lease_id)
+        if not isinstance(lease, Mapping):
+            return False
+        if (
+            lease.get("state") != LeaseState.UNKNOWN.value
+            or lease.get("owner_id") != owner
+            or lease.get("request_id") != (allocator_operation.get("request") or {}).get("request_id")
+        ):
+            return False
+        failed_operation = next((
+            item for item in self.ledger.operations()
+            if item.get("operation") == "lease.capture_baseline"
+            and item.get("status") == "unknown"
+            and isinstance(item.get("request"), Mapping)
+            and item["request"].get("lease_id") == lease_id
+            and isinstance(item.get("receipts"), list)
+            and item["receipts"]
+            and isinstance(item["receipts"][-1].get("receipt"), Mapping)
+            and item["receipts"][-1]["receipt"].get("state") in {"busy", "blocked", "unknown"}
+        ), None)
+        if not isinstance(failed_operation, Mapping):
+            return False
+        allocations = tuple(ResourceAllocation.from_dict(item) for item in lease.get("allocations", ()))
+        mode, adapter, descriptors = self._external_lease_reclamation_path(allocations, usage=LeaseUsage.EXTERNAL.value)
+        if mode != "observe" or adapter is None or not descriptors:
+            return False
+        operation_id = f"lease.pregrant_recovery:{lease_id}:{lease['fencing_token']}:{uuid.uuid4()}"
+        self._ensure_operation(
+            operation_id,
+            "lease.pregrant_recovery_baseline",
+            {
+                "demand_id": demand_id,
+                "lease_id": lease_id,
+                "fencing_token": lease["fencing_token"],
+                "resource_ids": sorted(item.resource_id for item in descriptors),
+                "failed_baseline_operation_id": failed_operation.get("operation_id"),
+            },
+            owner,
+        )
+        try:
+            baseline = adapter.capture_lease_baseline(lease, descriptors, operation_id=operation_id)
+            baseline = dict(baseline) if isinstance(baseline, Mapping) else {}
+        except Exception as exc:
+            baseline = {"state": "unknown", "error": type(exc).__name__}
+        valid = (
+            baseline.get("state") == "observed"
+            and baseline.get("verified") is True
+            and baseline.get("operation_id") == operation_id
+            and baseline.get("lease_id") == lease_id
+            and baseline.get("fencing_token") == lease.get("fencing_token")
+            and baseline.get("resource_ids") == sorted(item.resource_id for item in descriptors)
+            and isinstance(baseline.get("baseline"), Mapping)
+            and _optional_time(baseline.get("observed_at")) is not None
+        )
+        self._record_operation(operation_id, baseline, status="complete" if valid else "unknown")
+        if not valid:
+            current = self.ledger.get("lease_demands", key)
+            if isinstance(current, Mapping) and current.get("state") in {"pending", "cancelled", "expired"}:
+                retry_at = _now(self.clock) + timedelta(seconds=30)
+                self._update("lease_demands", key, {
+                    "pregrant_recovery_retry_after": _iso(retry_at),
+                    "pregrant_recovery_error": str(baseline.get("state", "unknown"))[:80],
+                    "updated_at": _iso(_now(self.clock)),
+                })
+            return False
+        release_receipt = {
+            "verified": True,
+            "lease_id": lease_id,
+            "fencing_token": int(lease["fencing_token"]),
+            "resource_ids": sorted(item.resource_id for item in descriptors),
+            "unissued_demand_id": demand_id,
+            "allocator_operation_id": allocator_operation.get("operation_id"),
+            "failed_baseline_operation_id": failed_operation.get("operation_id"),
+            "baseline_operation_id": operation_id,
+            "evidence": {
+                "baseline_observation_id": baseline.get("observation_id"),
+                "baseline_observed_at": baseline.get("observed_at"),
+            },
+        }
+        self.allocator.release_unissued_demand_lease(
+            lease_id,
+            int(lease["fencing_token"]),
+            demand_key=key,
+            demand_id=demand_id,
+            owner_id=owner,
+            idempotency_key=request_key,
+            allocator_operation_id=str(allocator_operation.get("operation_id")),
+            failed_baseline_operation_id=str(failed_operation.get("operation_id")),
+            baseline_operation_id=operation_id,
+            release_receipt=release_receipt,
+        )
+        return True
 
     def _preempt_for_lease_demand(self, request: ResourceRequest, demand: Mapping[str, Any]) -> bool:
         can_allocate = getattr(self.allocator, "can_allocate", None)
@@ -1101,13 +1291,9 @@ class Scheduler:
                 return False
             if updated.get("lease_id") not in (None, lease_id):
                 return False
-            self._discover_resources()
             if restart:
                 self._resume_flexible_job(current, attempt_id, lease_id, demand_id)
-        try:
-            return bool(can_allocate(request.requirements))
-        except Exception:
-            return False
+        return True
 
     def _resume_flexible_job(self, job: Mapping[str, Any], attempt_id: str, lease_id: str, demand_id: str) -> None:
         """Return a safely interrupted, explicitly restartable packet to queue."""
@@ -4092,7 +4278,7 @@ class Scheduler:
     def _reconcile_lease_demands(self) -> list[dict[str, Any]]:
         recovered = []
         for demand in self.ledger.list("lease_demands"):
-            if demand.get("state") != "pending":
+            if demand.get("state") not in {"pending", "cancelled", "expired"}:
                 continue
             key = f"{demand.get('owner')}:{demand.get('demand_id')}"
             result = self._process_lease_demand(key)

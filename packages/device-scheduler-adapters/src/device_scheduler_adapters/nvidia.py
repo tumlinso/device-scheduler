@@ -69,7 +69,7 @@ class NvidiaAdapter:
         external_lease_headroom_bytes: int = 512 * 1024 * 1024,
         external_lease_samples: int = 3,
         external_lease_interval_seconds: float = 0.5,
-        external_lease_timeout_seconds: float = 10.0,
+        external_lease_timeout_seconds: float = 30.0,
     ) -> None:
         if (
             isinstance(command_timeout, bool)

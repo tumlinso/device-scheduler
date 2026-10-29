@@ -128,6 +128,10 @@ def test_sdk_rejects_non_loopback_and_unbounded_waits(tmp_path: Path) -> None:
     client = DeviceSchedulerClient("http://127.0.0.1:8770", token_path)
     with pytest.raises(ValueError, match="0 through 300"):
         asyncio.run(client.wait_job("job-1", timeout_seconds=301))
+    with pytest.raises(ValueError, match="0 through 30"):
+        asyncio.run(client.call("leases.demand", {
+            "action": "wait", "demand_id": "demand-1", "wait_seconds": 31,
+        }))
 
 
 def test_mcp_stdio_bridge_registers_and_forwards_the_same_operation_set() -> None:

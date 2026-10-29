@@ -1932,9 +1932,14 @@ def test_priority_lease_demand_preempts_flexible_packet_after_verified_cleanup(t
         "action": "request", "demand_id": "interactive:demand-1",
         "request": {"requirements": gpu_req, "lease_ttl_seconds": 600},
     }, _principal("leases.demand", "leases.request", "leases.release", max_priority=70))
+    assert response["state"] == "pending"
+    scheduler.tick()
+    response = scheduler.dispatch("leases.demand", {
+        "action": "get", "demand_id": "interactive:demand-1",
+    }, _principal("leases.demand", "leases.request", "leases.release", max_priority=70))
     assert response["state"] == "granted"
     assert response["lease"]["state"] == "active"
-    assert scheduler.get_job(background["id"])["state"] == "queued"
+    assert scheduler.get_job(background["id"])["state"] in {"queued", "blocked"}
     assert scheduler.get_job(background["id"])["attempt_count"] == 1
     assert scheduler.get_job(background["id"])["cleanup_verified"] is False
     old_attempt = scheduler.ledger.get("attempts", scheduler.get_job(background["id"])["attempt_id"])["result"]
@@ -1962,6 +1967,11 @@ def test_priority_lease_demand_abandons_final_single_attempt_when_declared(tmp_p
     demand = scheduler.dispatch("leases.demand", {
         "demand_id": "interactive:demand-final",
         "request": {"requirements": gpu_req, "lease_ttl_seconds": 600},
+    }, _principal("leases.demand", "leases.request", "leases.release", max_priority=70))
+    assert demand["state"] == "pending"
+    scheduler.tick()
+    demand = scheduler.dispatch("leases.demand", {
+        "action": "get", "demand_id": "interactive:demand-final",
     }, _principal("leases.demand", "leases.request", "leases.release", max_priority=70))
     assert demand["state"] == "granted"
     cancelled = scheduler.get_job(background["id"])
@@ -2006,8 +2016,13 @@ def test_priority_lease_demand_preempts_minimum_cumulative_victim_set(tmp_path: 
         "demand_id": "interactive:two-gpu-demand",
         "request": {"requirements": all_requirements[:2], "lease_ttl_seconds": 600},
     }, _principal("leases.demand", "leases.request", "leases.release", max_priority=70))
+    assert result["state"] == "pending"
+    scheduler.tick()
+    result = scheduler.dispatch("leases.demand", {
+        "action": "get", "demand_id": "interactive:two-gpu-demand",
+    }, _principal("leases.demand", "leases.request", "leases.release", max_priority=70))
     assert result["state"] == "granted"
-    assert [scheduler.get_job(job["id"])["state"] for job in jobs] == ["queued", "queued", "running"]
+    assert [scheduler.get_job(job["id"])["state"] for job in jobs] == ["blocked", "blocked", "running"]
 
 
 def test_priority_lease_demand_is_idempotent_and_forecast_does_not_reserve(tmp_path: Path) -> None:
@@ -2020,13 +2035,97 @@ def test_priority_lease_demand_is_idempotent_and_forecast_does_not_reserve(tmp_p
     first = scheduler.dispatch("leases.demand", {"demand_id": "gpu:demand-idempotent", "request": request}, principal)
     replay = scheduler.dispatch("leases.demand", {"demand_id": "gpu:demand-idempotent", "request": request}, principal)
     assert first == replay
+    assert first["state"] == "pending"
     with pytest.raises(ConflictError, match="different request"):
         scheduler.dispatch("leases.demand", {"demand_id": "gpu:demand-idempotent", "request": {**request, "lease_ttl_seconds": 500}}, principal)
+    scheduler.tick()
+    assert scheduler.dispatch("leases.demand", {"action": "get", "demand_id": "gpu:demand-idempotent"}, principal)["state"] == "granted"
     count_before = len(scheduler.allocator.list_leases())
     forecast = scheduler.dispatch("resources.forecast", {"request": {"owner_id": "agent:one", **request}}, principal)
     assert forecast["advisory_only"] is True
     assert forecast["horizon_seconds"] == 600
     assert len(scheduler.allocator.list_leases()) == count_before
+
+
+@pytest.mark.parametrize("cancel_after_failure", [False, True])
+@pytest.mark.parametrize("raise_first_baseline", [False, True])
+def test_priority_demand_recovers_only_its_unissued_failed_baseline_lease(
+    tmp_path: Path, cancel_after_failure: bool, raise_first_baseline: bool
+) -> None:
+    class FailFirstBaseline(ObservedGpuAdapter):
+        def __init__(self) -> None:
+            super().__init__()
+            self.calls = 0
+
+        def capture_lease_baseline(self, lease, resources, *, operation_id):
+            self.calls += 1
+            if self.calls == 1 and raise_first_baseline:
+                raise RuntimeError("baseline adapter failed before producing an observation")
+            receipt = dict(super().capture_lease_baseline(lease, resources, operation_id=operation_id))
+            if self.calls == 1 and not raise_first_baseline:
+                receipt.update({
+                    "state": "busy",
+                    "verified": False,
+                    "reason": "pregrant baseline did not reach the repeated idle threshold",
+                })
+            return receipt
+
+    adapter = FailFirstBaseline()
+    scheduler = _scheduler(tmp_path, adapters=(adapter,))
+    actor = _principal("leases.demand", "leases.request", "leases.release", max_priority=70)
+    request = {"requirements": [{
+        "kind": "gpu", "selectors": {"resource_id": "gpu:host:GPU-test"},
+        "quantities": {"gpu_memory_bytes": 1}, "mode": "exclusive",
+    }], "lease_ttl_seconds": 600}
+    pending = scheduler.dispatch("leases.demand", {
+        "demand_id": "unissued:baseline-retry", "request": request,
+    }, actor)
+    assert pending["state"] == "pending"
+
+    scheduler.tick()
+    after_failed_baseline = scheduler.ledger.get(
+        "lease_demands", "agent:one:unissued:baseline-retry"
+    )
+    unknown_lease = scheduler.ledger.list("lease")[0]
+    assert after_failed_baseline["state"] == "pending"
+    assert after_failed_baseline.get("lease") is None
+    assert unknown_lease["state"] == "unknown"
+    if cancel_after_failure:
+        cancelled = scheduler.dispatch("leases.demand", {
+            "action": "cancel", "demand_id": "unissued:baseline-retry",
+        }, actor)
+        assert cancelled["state"] == "cancelled"
+
+    second_tick = scheduler.tick()
+    assert adapter.calls == 2, (second_tick, scheduler.ledger.operations())
+    repaired_demand = scheduler.ledger.get(
+        "lease_demands", "agent:one:unissued:baseline-retry"
+    )
+    assert repaired_demand["state"] == ("cancelled" if cancel_after_failure else "pending")
+    assert repaired_demand.get("grant_attempt", 0) == (0 if cancel_after_failure else 1), second_tick["errors"]
+    assert scheduler.ledger.get("lease", unknown_lease["lease_id"])["state"] == "released"
+    repair_event = next(
+        item for item in scheduler.ledger.events(kind="lease_unissued_pregrant_released")
+        if item.get("entity_id") == unknown_lease["lease_id"]
+    )
+    assert repair_event["payload"]["demand_id"] == "unissued:baseline-retry"
+
+    scheduler.tick()
+    if cancel_after_failure:
+        cancelled = scheduler.dispatch("leases.demand", {
+            "action": "get", "demand_id": "unissued:baseline-retry",
+        }, actor)
+        assert cancelled["state"] == "cancelled"
+        assert scheduler.allocator.list_leases(state="active") == []
+        assert adapter.calls == 2
+    else:
+        granted = scheduler.dispatch("leases.demand", {
+            "action": "get", "demand_id": "unissued:baseline-retry",
+        }, actor)
+        assert granted["state"] == "granted"
+        assert granted["lease"]["state"] == "active"
+        assert granted["lease"]["lease_id"] != unknown_lease["lease_id"]
+        assert adapter.calls == 3
 
 
 def test_resource_forecast_returns_atomic_selector_placement_and_window_semantics(tmp_path: Path) -> None:
@@ -2158,24 +2257,19 @@ def test_resource_forecast_shortens_atomic_window_for_future_interactive_job(tmp
     assert candidate["window_seconds"] < 30
 
 
-def test_cancel_serializes_with_inflight_priority_demand_grant(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cancel_wins_against_inflight_priority_demand_grant(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     scheduler = _scheduler(tmp_path, adapters=(ObservedGpuAdapter(),))
     actor = _principal("leases.demand", "leases.request", "leases.release", max_priority=70)
     request = {"requirements": [{
         "kind": "gpu", "selectors": {"resource_id": "gpu:host:GPU-test"},
         "quantities": {"gpu_memory_bytes": 1}, "mode": "exclusive",
     }], "lease_ttl_seconds": 600}
-    original = scheduler._request_lease
-
-    def unavailable(_args, _actor):
-        raise ConflictError("fixture capacity is temporarily unavailable")
-
-    monkeypatch.setattr(scheduler, "_request_lease", unavailable)
     pending = scheduler.dispatch("leases.demand", {"demand_id": "race:demand", "request": request}, actor)
     assert pending["state"] == "pending"
     entered = Event()
     release = Event()
     late_result: list[Any] = []
+    original = scheduler._request_lease
 
     def blocked_grant(args, principal):
         entered.set()
@@ -2189,35 +2283,25 @@ def test_cancel_serializes_with_inflight_priority_demand_grant(tmp_path: Path, m
             raise
 
     monkeypatch.setattr(scheduler, "_request_lease", blocked_grant)
-    wait_result: list[dict[str, Any]] = []
+    process_result: list[dict[str, Any]] = []
     cancel_result: list[Any] = []
-    cancel_started = Event()
 
-    waiter = Thread(target=lambda: wait_result.append(scheduler.dispatch(
-        "leases.demand", {"action": "wait", "demand_id": "race:demand", "wait_seconds": 1}, actor,
-    )))
-    waiter.start()
+    worker = Thread(target=lambda: process_result.append(
+        scheduler._process_lease_demand("agent:one:race:demand")
+    ))
+    worker.start()
     assert entered.wait(timeout=1)
-
-    def cancel() -> None:
-        cancel_started.set()
-        try:
-            cancel_result.append(scheduler.dispatch("leases.demand", {"action": "cancel", "demand_id": "race:demand"}, actor))
-        except ConflictError as exc:
-            cancel_result.append(exc)
-
-    canceller = Thread(target=cancel)
-    canceller.start()
-    assert cancel_started.wait(timeout=1)
-    assert not cancel_result
+    cancel_result.append(scheduler.dispatch("leases.demand", {"action": "cancel", "demand_id": "race:demand"}, actor))
+    assert cancel_result[0]["state"] == "cancelled"
     release.set()
-    waiter.join(timeout=2)
-    canceller.join(timeout=2)
-    assert not waiter.is_alive() and not canceller.is_alive()
-    assert wait_result[0]["state"] == "granted"
-    assert len(cancel_result) == 1 and isinstance(cancel_result[0], ConflictError)
+    worker.join(timeout=3)
+    assert not worker.is_alive()
+    assert process_result[0]["state"] == "cancelled"
     current = scheduler.dispatch("leases.demand", {"action": "get", "demand_id": "race:demand"}, actor)
-    assert current["state"] == "granted"
+    assert current["state"] == "cancelled"
+    assert len(late_result) == 1
+    assert scheduler.allocator.list_leases(state="released")
+    assert scheduler.allocator.list_leases(state="active") == []
 
 
 def test_expired_priority_demand_releases_late_grant(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2230,11 +2314,6 @@ def test_expired_priority_demand_releases_late_grant(tmp_path: Path, monkeypatch
         "quantities": {"gpu_memory_bytes": 1}, "mode": "exclusive",
     }], "lease_ttl_seconds": 600}
     original = scheduler._request_lease
-
-    def unavailable(_args, _actor):
-        raise ConflictError("fixture capacity is temporarily unavailable")
-
-    monkeypatch.setattr(scheduler, "_request_lease", unavailable)
     pending = scheduler.dispatch("leases.demand", {"demand_id": "expiry:demand", "request": request}, actor)
     assert pending["state"] == "pending"
     record = scheduler.ledger.get("lease_demands", "agent:one:expiry:demand")
@@ -2257,18 +2336,18 @@ def test_expired_priority_demand_releases_late_grant(tmp_path: Path, monkeypatch
             raise
 
     monkeypatch.setattr(scheduler, "_request_lease", blocked_grant)
-    waited: list[dict[str, Any]] = []
-    waiter = Thread(target=lambda: waited.append(scheduler.dispatch(
-        "leases.demand", {"action": "wait", "demand_id": "expiry:demand", "wait_seconds": 1}, actor,
-    )))
-    waiter.start()
+    process_result: list[dict[str, Any]] = []
+    worker = Thread(target=lambda: process_result.append(
+        scheduler._process_lease_demand("agent:one:expiry:demand")
+    ))
+    worker.start()
     assert entered.wait(timeout=1)
     clock.advance(2)
     release.set()
-    waiter.join(timeout=2)
-    assert not waiter.is_alive()
+    worker.join(timeout=3)
+    assert not worker.is_alive()
     assert late_result, "grant call was not reached"
-    assert waited[0]["state"] == "expired"
+    assert process_result[0]["state"] == "expired"
     demand = scheduler.dispatch("leases.demand", {"action": "get", "demand_id": "expiry:demand"}, actor)
     assert demand["state"] == "expired"
     assert demand["late_grant_cleanup"]["state"] == "released"
