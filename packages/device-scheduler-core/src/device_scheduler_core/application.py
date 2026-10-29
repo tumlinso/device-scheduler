@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import fnmatch
 import inspect
+import json
 import math
 import threading
 import time
@@ -64,13 +65,16 @@ from .scheduling import (
     scheduled_job_ready,
     validate_dependency_graph,
 )
+from .validation import identifier
 
 
 OPERATION_NAMES: dict[str, str] = {
     "resources.list": "resources.list",
     "resources.capabilities": "resources.capabilities",
+    "resources.forecast": "resources.forecast",
     "access.inspect": "access.inspect",
     "leases.request": "leases.request",
+    "leases.demand": "leases.demand",
     "leases.get": "leases.get",
     "leases.list": "leases.list",
     "leases.renew": "leases.renew",
@@ -100,6 +104,8 @@ OPERATION_NAMES: dict[str, str] = {
     "admin.status": "admin.status",
     "admin.reconcile": "admin.reconcile",
     "admin.backup": "admin.backup",
+    "history.compact": "history.compact",
+    "history.status": "history.status",
 }
 
 _TERMINAL = frozenset({"succeeded", "failed", "cancelled"})
@@ -131,6 +137,8 @@ class SchedulerConfig:
     max_output_bytes: int = 262144
     max_output_lines: int = 2000
     backup_root: Path | None = None
+    autobench_history_owner_limit_bytes: int = 64 * 1024 * 1024
+    autobench_history_owner_limit_rows: int = 10_000
 
     def __post_init__(self) -> None:
         for name in ("state_root", "artifact_root", "execution_root", "backup_root"):
@@ -149,6 +157,15 @@ class SchedulerConfig:
             raise ValueError("max_wait_seconds must be non-negative")
         if self.max_output_bytes < 0 or self.max_output_lines < 1:
             raise ValueError("output bounds are invalid")
+        if (
+            isinstance(self.autobench_history_owner_limit_bytes, bool)
+            or not isinstance(self.autobench_history_owner_limit_bytes, int)
+            or self.autobench_history_owner_limit_bytes < 1
+            or isinstance(self.autobench_history_owner_limit_rows, bool)
+            or not isinstance(self.autobench_history_owner_limit_rows, int)
+            or self.autobench_history_owner_limit_rows < 1
+        ):
+            raise ValueError("Autobench history owner limits must be positive integers")
         if not isinstance(self.profiles, Mapping) or any(not isinstance(value, Mapping) for value in self.profiles.values()):
             raise ValueError("profiles must map profile IDs to objects")
         if not isinstance(self.backend_profiles, Mapping) or any(not isinstance(value, Mapping) for value in self.backend_profiles.values()):
@@ -307,7 +324,7 @@ class Scheduler:
         self._authorize(actor, canonical)
         # Waiting only polls canonical state. It does not retain the process lock,
         # so the background tick can observe and complete the same job.
-        lock = _NullContext() if canonical in {"jobs.wait", "resources.list", "leases.request"} else self._lock
+        lock = _NullContext() if canonical in {"jobs.wait", "resources.list", "leases.request", "resources.forecast"} or (canonical == "leases.demand" and args.get("action") == "wait") else self._lock
         try:
             with lock:
                 result = self._dispatch(canonical, dict(args), actor)
@@ -341,6 +358,8 @@ class Scheduler:
             }
         if operation == "resources.capabilities":
             return self._capabilities()
+        if operation == "resources.forecast":
+            return self._resource_forecast(args, actor)
         if operation == "access.inspect":
             return {
                 "principal_id": actor.principal_id,
@@ -352,6 +371,8 @@ class Scheduler:
             }
         if operation == "leases.request":
             return self._request_lease(args, actor)
+        if operation == "leases.demand":
+            return self._lease_demand(args, actor)
         if operation == "leases.get":
             lease = self._get_lease(_required(args, "lease_id"))
             self._require_owner(_plain_lease(lease), actor, owner_key="owner_id", any_owner_action="leases.read:any_owner")
@@ -369,6 +390,8 @@ class Scheduler:
             owner = self._owner_from_args(args, actor, "jobs.submit:any_owner")
             spec = self._prepare_job_spec(spec_raw, owner, actor)
             key = _idempotency_key(args, spec.idempotency_key)
+            if spec.retention_policy == "autobench":
+                self._validate_autobench_submission_key(key, owner)
             lease_id = args.get("lease_id")
             if lease_id is not None and not isinstance(lease_id, str):
                 raise ValidationError("lease_id must be a string")
@@ -453,6 +476,10 @@ class Scheduler:
             return self._reconcile_admin()
         if operation == "admin.backup":
             return self._backup(args)
+        if operation == "history.compact":
+            return self._compact_history(args, actor)
+        if operation == "history.status":
+            return self._history_status(actor)
         raise ValidationError(f"unknown scheduler operation {operation!r}")
 
     def tick(self) -> dict[str, Any]:
@@ -471,6 +498,10 @@ class Scheduler:
                 summary["reconciled_preemptions"] = self._reconcile_preemptions()
             except Exception as exc:
                 summary["errors"].append({"component": "preemption_reconciliation", "error": type(exc).__name__})
+            try:
+                summary["reconciled_lease_demands"] = self._reconcile_lease_demands()
+            except Exception as exc:
+                summary["errors"].append({"component": "lease_demand_reconciliation", "error": type(exc).__name__})
             try:
                 summary["reconciled_backends"] = self._reconcile_backends()
             except Exception as exc:
@@ -556,6 +587,14 @@ class Scheduler:
             raise ValidationError("job spec must be an object")
         normalized = dict(spec)
         normalized["owner_id"] = owner
+        if normalized.get("retention_policy") == "autobench":
+            self._validate_autobench_submission_key(key, owner)
+            prior_key = normalized.get("idempotency_key")
+            if prior_key is not None and prior_key != key:
+                raise ConflictError("Autobench spec idempotency_key must match the submission key")
+            # Keep the expiring replay namespace with the retained job so the
+            # maintenance path can purge complete identities only after expiry.
+            normalized["idempotency_key"] = key
         job_spec = JobSpec.from_dict(normalized)
         if lease_id is not None:
             if reservation_id is not None:
@@ -576,6 +615,23 @@ class Scheduler:
             raise ValidationError("job owner and idempotency key are required")
 
         def create(tx: Any) -> dict[str, Any]:
+            if job_spec.retention_policy == "autobench":
+                budget_check = getattr(tx, "check_autobench_owner_budget", None)
+                if not callable(budget_check):
+                    raise UnsupportedCapabilityError(
+                        "ledger does not support bounded Autobench history admission"
+                    )
+                budget_check(
+                    owner,
+                    additional_bytes=(
+                        len(json.dumps(payload, sort_keys=True, default=str).encode("utf-8")) * 3
+                        + job_spec.max_attempts * 4096
+                        + 4096
+                    ),
+                    additional_rows=4 + job_spec.max_attempts * 10,
+                    limit_bytes=self.config.autobench_history_owner_limit_bytes,
+                    limit_rows=self.config.autobench_history_owner_limit_rows,
+                )
             if lease_id is not None:
                 lease = tx.get("lease", lease_id)
                 if lease is None:
@@ -635,6 +691,33 @@ class Scheduler:
             return saved
 
         return self.ledger.idempotent(owner, key, "jobs.submit", payload, create)
+
+    def _validate_autobench_submission_key(self, key: str, owner: str) -> None:
+        """Require a bounded replay window for every retained Autobench job."""
+        parts = key.split(":", 2)
+        if len(parts) != 3 or parts[0] != "autobench-v1" or not parts[2] or len(key) > 256:
+            raise ValidationError(
+                "retention_policy=autobench requires idempotency_key "
+                "autobench-v1:<expiry-unix-seconds>:<opaque-unique>"
+            )
+        try:
+            expiry = int(parts[1])
+        except ValueError as exc:
+            raise ValidationError("Autobench idempotency key expiry must be Unix seconds") from exc
+        if expiry <= 0:
+            raise ValidationError("Autobench idempotency key expiry must be positive")
+        now = int(_now(self.clock).timestamp())
+        if expiry <= now:
+            raise ConflictError(
+                "Autobench submission idempotency window has expired",
+                details={"expiry_unix_seconds": expiry, "now_unix_seconds": now},
+            )
+        if expiry > now + 30 * 24 * 60 * 60 + 60:
+            raise ValidationError("Autobench idempotency expiry may be at most 30 days in the future")
+        validate = getattr(self.ledger, "validate_autobench_idempotency_key", None)
+        if not callable(validate):
+            raise UnsupportedCapabilityError("ledger does not enforce expiring Autobench replay identities")
+        validate(owner, key, now_unix_seconds=now)
 
     def get_job(self, job_id: str) -> dict[str, Any]:
         job = self._get("jobs", job_id)
@@ -757,6 +840,392 @@ class Scheduler:
         if mode == "observe":
             self._capture_external_lease_baseline(lease_record, adapter, descriptors)
         return _json_value(lease)
+
+    def _lease_demand(self, args: Mapping[str, Any], actor: Principal) -> dict[str, Any]:
+        action = args.get("action", "request")
+        if action not in {"request", "get", "wait", "cancel"}:
+            raise ValidationError("leases.demand action must be request, get, wait, or cancel")
+        if action in {"request", "wait"} and actor.max_priority < 70:
+            raise PermissionDeniedError("interactive priority lease demand exceeds the caller's priority ceiling")
+        demand_id = args.get("demand_id")
+        if not isinstance(demand_id, str) or not demand_id.strip():
+            raise ValidationError("demand_id is required")
+        identifier(demand_id, "demand_id")
+        key = f"{actor.principal_id}:{demand_id}"
+        if action == "request":
+            raw = args.get("request")
+            if not isinstance(raw, Mapping):
+                raise ValidationError("priority lease demand request must be an object")
+            data = dict(raw)
+            if data.get("owner_id", actor.principal_id) != actor.principal_id and not self._has(actor, "leases.demand:any_owner"):
+                raise PermissionDeniedError("priority lease demand owner must match the authenticated principal")
+            data["owner_id"] = data.get("owner_id", actor.principal_id)
+            data["request_id"] = demand_id
+            data["idempotency_key"] = demand_id
+            data["usage"] = data.get("usage", LeaseUsage.EXTERNAL.value)
+            request = ResourceRequest.from_dict(data)
+            if request.owner_id != actor.principal_id and not self._has(actor, "leases.demand:any_owner"):
+                raise PermissionDeniedError("priority lease demand owner must match the authenticated principal")
+            record = self.ledger.get("lease_demands", key)
+            if record is None:
+                now = _now(self.clock)
+                record = self.ledger.put("lease_demands", key, {
+                    "demand_id": demand_id, "owner": request.owner_id,
+                    "request": request.to_dict(), "state": "pending",
+                    "created_at": _iso(now), "updated_at": _iso(now),
+                    "expires_at": _iso(now + timedelta(hours=1)),
+                })
+            elif record.get("request") != request.to_dict():
+                raise ConflictError("demand_id was already used for a different request")
+            return self._process_lease_demand(key)
+        record = self.ledger.get("lease_demands", key)
+        if record is None:
+            raise NotFoundError("priority lease demand does not exist")
+        if record.get("owner") != actor.principal_id and not self._has(actor, "leases.demand:any_owner"):
+            raise PermissionDeniedError("priority lease demand belongs to another principal")
+        if action == "cancel":
+            if record.get("state") == "granted":
+                raise ConflictError("a granted priority lease demand cannot be cancelled; release its lease")
+            return self._update("lease_demands", key, {"state": "cancelled", "updated_at": _iso(_now(self.clock))})
+        if action == "get":
+            return _without_revision(record)
+        timeout = args.get("wait_seconds", 0)
+        if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not 0 <= timeout <= 30:
+            raise ValidationError("wait_seconds must be between 0 and 30")
+        deadline = self._monotonic() + float(timeout)
+        while True:
+            record = self._process_lease_demand(key)
+            if record.get("state") != "pending" or self._monotonic() >= deadline:
+                return record
+            time.sleep(min(0.1, max(0.0, deadline - self._monotonic())))
+
+    def _process_lease_demand(self, key: str) -> dict[str, Any]:
+        # Demand processing can cancel jobs and create leases. Serialize it
+        # with cancellation and tick reconciliation so cancel can never be
+        # overwritten by an in-flight grant.
+        with self._lock:
+            return self._process_lease_demand_locked(key)
+
+    def _process_lease_demand_locked(self, key: str) -> dict[str, Any]:
+        record = self.ledger.get("lease_demands", key)
+        if record is None:
+            raise NotFoundError("priority lease demand does not exist")
+        state = str(record.get("state"))
+        if state != "pending":
+            return _without_revision(record)
+        expires_at = _optional_time(record.get("expires_at"))
+        if expires_at is None or expires_at <= _now(self.clock):
+            return self._update("lease_demands", key, {"state": "expired", "updated_at": _iso(_now(self.clock))})
+        request = ResourceRequest.from_dict(record["request"])
+        try:
+            lease = self._request_lease({"request": request.to_dict(), "idempotency_key": request.idempotency_key}, Principal(
+                principal_id=request.owner_id, actions=frozenset({"leases.request", "leases.request:any_owner"}), max_priority=100
+            ))
+        except ConflictError:
+            lease = None
+        if lease is None:
+            self._preempt_for_lease_demand(request, record)
+            expires_at = _optional_time(record.get("expires_at"))
+            if expires_at is None or expires_at <= _now(self.clock):
+                return self._update("lease_demands", key, {"state": "expired", "updated_at": _iso(_now(self.clock))})
+            try:
+                lease = self._request_lease({"request": request.to_dict(), "idempotency_key": request.idempotency_key}, Principal(
+                    principal_id=request.owner_id, actions=frozenset({"leases.request", "leases.request:any_owner"}), max_priority=100
+                ))
+            except ConflictError:
+                lease = None
+        if lease is None:
+            return _without_revision(record)
+        expires_at = _optional_time(record.get("expires_at"))
+        if expires_at is None or expires_at <= _now(self.clock):
+            lease_record = _plain_lease(lease)
+            cleanup: Mapping[str, Any]
+            try:
+                cleanup = self._release_lease(
+                    {"lease_id": lease_record["lease_id"], "fencing_token": lease_record["fencing_token"]},
+                    Principal(
+                        principal_id=request.owner_id,
+                        actions=frozenset({"leases.release", "leases.manage:any_owner"}),
+                        max_priority=100,
+                    ),
+                )
+            except Exception as exc:
+                cleanup = {"state": "unknown", "cleanup_verified": False, "error": type(exc).__name__}
+            return self._update("lease_demands", key, {
+                "state": "expired", "late_grant_cleanup": _json_value(cleanup),
+                "updated_at": _iso(_now(self.clock)),
+            })
+        return self._update("lease_demands", key, {
+            "state": "granted", "lease": _json_value(lease), "updated_at": _iso(_now(self.clock))
+        })
+
+    def _preempt_for_lease_demand(self, request: ResourceRequest, demand: Mapping[str, Any]) -> bool:
+        can_allocate = getattr(self.allocator, "can_allocate", None)
+        if not callable(can_allocate) or self.executor is None:
+            return False
+        try:
+            available_resources_fn = getattr(self.allocator, "list_resources", None)
+            raw_resources = available_resources_fn(available_only=False) if callable(available_resources_fn) else self.ledger.list("resource")
+            resources_by_id = {
+                item.resource_id: item if isinstance(item, Resource) else Resource.from_dict(item)
+                for item in raw_resources
+            }
+        except Exception:
+            return False
+        candidates = [job for job in self.ledger.list("jobs") if _state(job.get("state")) == "running"]
+        eligible: list[tuple[float, str, Mapping[str, Any], str, str, bool]] = []
+        for job in candidates:
+            spec = JobSpec.from_dict(job.get("spec", {}))
+            if (
+                spec.priority_class != "background" or not spec.flexible
+                or not spec.interruption.cancellation_supported
+                or job.get("reservation_id") or job.get("reservation_phase_id")
+                or job.get("lease_binding") == "supervised" or job.get("lease_binding") == "protected"
+            ):
+                continue
+            attempt_count = job.get("attempt_count", 0)
+            restart = spec.preemption_action.value == "restart"
+            if restart and (not spec.interruption.restart_safe or attempt_count >= spec.max_attempts):
+                continue
+            lease_id = job.get("lease_id")
+            if not isinstance(lease_id, str):
+                continue
+            lease = _plain_lease(self._get_lease(lease_id))
+            if lease.get("state") != LeaseState.ACTIVE.value or lease.get("owner_id") != job.get("owner"):
+                continue
+            contributes = False
+            for allocation in lease.get("allocations", ()):
+                resource = resources_by_id.get(str(allocation.get("resource_id")))
+                if resource is None:
+                    continue
+                for requirement in request.requirements:
+                    if not _requirement_matches_resource(requirement, resource):
+                        continue
+                    if requirement.mode == AllocationMode.EXCLUSIVE or set(requirement.quantities).intersection(allocation.get("quantities", {})):
+                        contributes = True
+                        break
+                if contributes:
+                    break
+            if not contributes:
+                continue
+            attempt_id = job.get("attempt_id")
+            attempt = self.ledger.get("attempts", str(attempt_id)) if attempt_id else None
+            if not isinstance(attempt, Mapping) or attempt.get("state") != "running" or _handle(attempt.get("execution_handle")) is None:
+                continue
+            expected = spec.expected_duration_seconds
+            eligible.append((float(expected) if expected is not None else float("inf"), str(job.get("created_at", "")), job, str(attempt_id), lease_id, restart))
+        # Find a sufficient eligible set first. This supports atomic bundles
+        # that require releasing multiple packets, while never cancelling a
+        # victim unless the full set can satisfy the request.
+        chosen: list[tuple[float, str, Mapping[str, Any], str, str, bool]] = []
+        for candidate in sorted(eligible, key=lambda item: (item[0], item[1], str(item[2].get("job_id")))):
+            chosen.append(candidate)
+            try:
+                if can_allocate(request.requirements, ignore_lease_ids=tuple(item[4] for item in chosen)):
+                    break
+            except Exception:
+                return False
+        else:
+            return False
+        if not chosen:
+            return False
+        for _expected, _created, job, attempt_id, lease_id, restart in chosen:
+            # Re-read immediately before each effect; concurrent caller-owned
+            # changes or reservations make this candidate ineligible.
+            current = self.ledger.get("jobs", str(job.get("job_id"))) or {}
+            if current.get("attempt_id") != attempt_id or current.get("lease_id") != lease_id or _state(current.get("state")) != "running":
+                return False
+            demand_id = str(demand.get("demand_id"))
+            reason = f"priority_lease_demand:{demand_id}"
+            cancelled = self.cancel_job(str(current.get("job_id")), reason=reason)
+            updated = self.ledger.get("jobs", str(job.get("job_id"))) or {}
+            if _state(cancelled.get("state")) != "cancelled" or cancelled.get("cleanup_verified") is not True:
+                return False
+            if updated.get("lease_id") not in (None, lease_id):
+                return False
+            self._discover_resources()
+            if restart:
+                self._resume_flexible_job(current, attempt_id, lease_id, demand_id)
+        try:
+            return bool(can_allocate(request.requirements))
+        except Exception:
+            return False
+
+    def _resume_flexible_job(self, job: Mapping[str, Any], attempt_id: str, lease_id: str, demand_id: str) -> None:
+        """Return a safely interrupted, explicitly restartable packet to queue."""
+        now = _iso(_now(self.clock))
+        job_id = str(job.get("job_id"))
+        with self.ledger.transaction() as tx:
+            current = tx.get("jobs", job_id)
+            attempt = tx.get("attempts", attempt_id)
+            if current is None or attempt is None or current.get("lease_id") != lease_id:
+                raise ReconciliationRequiredError("interrupted flexible job identity changed")
+            if _state(current.get("state")) != "cancelled" or current.get("cleanup_verified") is not True:
+                raise ReconciliationRequiredError("interrupted flexible job cleanup was not verified")
+            a = _without_revision(attempt)
+            a["preemption"] = {"reason": f"priority_lease_demand:{demand_id}", "recorded_at": now}
+            tx.put("attempts", attempt_id, a, attempt[_REVISION])
+            updated = _without_revision(current)
+            updated.update({"state": "queued", "lease_id": None, "lease_fencing_token": None,
+                            "result": None, "cleanup_verified": False,
+                            "blocked_reason": f"priority_lease_demand:{demand_id}", "updated_at": now})
+            tx.put("jobs", job_id, updated, current[_REVISION])
+            tx.event("job.preempted", job_id, {"reason": f"priority_lease_demand:{demand_id}", "attempt_id": attempt_id})
+
+    def _compact_history(self, args: Mapping[str, Any], actor: Principal) -> dict[str, Any]:
+        if not self._has(actor, "history.compact:autobench"):
+            raise PermissionDeniedError("history compaction requires history.compact:autobench authorization")
+        compact = getattr(self.ledger, "compact_autobench_history", None)
+        if not callable(compact):
+            raise UnsupportedCapabilityError("ledger does not support autobench history compaction")
+        before = _parse_time(args.get("before", _iso(_now(self.clock))), "before")
+        maximum = args.get("max_records", 1000)
+        if isinstance(maximum, bool) or not isinstance(maximum, int) or not 1 <= maximum <= 10000:
+            raise ValidationError("max_records must be between 1 and 10000")
+        owner = actor.principal_id
+        result = compact(owner, before=before, max_records=maximum)
+        owner_usage = getattr(self.ledger, "autobench_owner_usage", None)
+        if callable(owner_usage):
+            result["owner_usage"] = owner_usage(owner)
+            result["owner_usage"]["configured_limit_bytes"] = self.config.autobench_history_owner_limit_bytes
+            result["owner_usage"]["configured_limit_rows"] = self.config.autobench_history_owner_limit_rows
+        usage = getattr(self.ledger, "storage_usage", None)
+        if callable(usage):
+            result["storage_usage"] = usage()
+        return result
+
+    def _history_status(self, actor: Principal) -> dict[str, Any]:
+        if not self._has(actor, "history.status") and not self._has(actor, "history.compact:autobench"):
+            raise PermissionDeniedError("history status requires history.status authorization")
+        owner_usage = getattr(self.ledger, "autobench_owner_usage", None)
+        storage_usage = getattr(self.ledger, "storage_usage", None)
+        if not callable(owner_usage) or not callable(storage_usage):
+            raise UnsupportedCapabilityError("ledger does not report bounded owner-scoped Autobench history usage")
+        retention = self.ledger.get("autobench_retention", actor.principal_id) or {}
+        return {
+            "owner_id": actor.principal_id,
+            "owner_usage": owner_usage(actor.principal_id),
+            "retention_floor_expiry_unix_seconds": retention.get("floor_expiry_unix_seconds", 0),
+            "configured_limits": {
+                "bytes": self.config.autobench_history_owner_limit_bytes,
+                "rows": self.config.autobench_history_owner_limit_rows,
+            },
+            "storage_usage": storage_usage(),
+            "scope": "owner-scoped Autobench admission budget plus aggregate SQLite footprint",
+        }
+
+    def _resource_forecast(self, args: Mapping[str, Any], actor: Principal) -> dict[str, Any]:
+        raw = args.get("request")
+        if not isinstance(raw, Mapping):
+            raise ValidationError("forecast request must be an object")
+        request_data = dict(raw)
+        owner = request_data.get("owner_id", actor.principal_id)
+        if owner != actor.principal_id and not self._has(actor, "resources.forecast:any_owner"):
+            raise PermissionDeniedError("forecast request owner must match the authenticated principal")
+        request_data.setdefault("owner_id", actor.principal_id)
+        request_data.setdefault("request_id", f"forecast:{actor.principal_id}")
+        request_data.setdefault("lease_ttl_seconds", 60)
+        request = ResourceRequest.from_dict(request_data)
+        horizon = args.get("horizon_seconds", 600)
+        limit = args.get("max_candidates", 64)
+        if isinstance(horizon, bool) or not isinstance(horizon, (int, float)) or not 1 <= horizon <= 600:
+            raise ValidationError("horizon_seconds must be between 1 and 600")
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 64:
+            raise ValidationError("max_candidates must be between 1 and 64")
+        now = _now(self.clock)
+        self._discover_resources()
+        status_fn = getattr(self.allocator, "list_resource_status", None)
+        resources = status_fn() if callable(status_fn) else []
+        candidates: list[dict[str, Any]] = []
+        current_allocations: list[dict[str, Any]] = []
+        for lease in self.allocator.list_leases(state=None) if callable(getattr(self.allocator, "list_leases", None)) else []:
+            lease_state = _state(getattr(lease, "state", None))
+            lease_data = _json_value(lease)
+            if lease_state in {LeaseState.ACTIVE.value, LeaseState.UNKNOWN.value, LeaseState.RECLAIMING.value, LeaseState.RELEASE_REQUESTED.value}:
+                for allocation in lease_data.get("allocations", ()):
+                    current_allocations.append({"resource_id": allocation.get("resource_id"), "quantities": allocation.get("quantities", {}), "lease_state": lease_state})
+        active_job_release: dict[str, float] = {}
+        for job in self.ledger.list("jobs"):
+            if _state(job.get("state")) != "running" or not job.get("lease_id"):
+                continue
+            spec = JobSpec.from_dict(job.get("spec", {}))
+            attempt = self.ledger.get("attempts", str(job.get("attempt_id"))) if job.get("attempt_id") else None
+            lease = self.ledger.get("lease", str(job.get("lease_id")))
+            started = _optional_time(attempt.get("started_at")) if isinstance(attempt, Mapping) else None
+            if spec.expected_duration_seconds is None or started is None or not isinstance(lease, Mapping):
+                continue
+            # Only Scheduler-owned active packet leases with a measured start
+            # timestamp are release estimates. Caller-owned, unknown and
+            # protected claims remain unavailable regardless of expiry.
+            if lease.get("owner_id") != job.get("owner") or lease.get("state") != LeaseState.ACTIVE.value or lease.get("reservation_id"):
+                continue
+            remaining = max(0.0, float(spec.expected_duration_seconds) - (now - started).total_seconds())
+            for allocation in lease.get("allocations", ()):
+                rid = str(allocation.get("resource_id"))
+                active_job_release[rid] = min(active_job_release.get(rid, float("inf")), remaining)
+        try:
+            whole_bundle_fits = bool(self.allocator.preview_allocation(request.requirements))
+        except ConflictError:
+            whole_bundle_fits = False
+        except (UnsupportedCapabilityError, AttributeError):
+            whole_bundle_fits = False
+        queue_count = sum(
+            1 for job in self.ledger.list("jobs")
+            if _state(job.get("state")) in {"queued", "blocked"}
+            and _state(job.get("spec", {}).get("priority_class")) == "interactive"
+        )
+        pending_demand_count = sum(1 for demand in self.ledger.list("lease_demands") if demand.get("state") == "pending")
+        known_schedules = [
+            {
+                "schedule_id": str(item.get("schedule_id", item.get("id", ""))),
+                "state": _state(item.get("state")),
+                "pending_occurrences": list(item.get("pending_occurrences", ()))[:4],
+            }
+            for item in self.ledger.list("schedules")
+            if _state(item.get("state")) == "active"
+        ][:limit]
+        for requirement_index, requirement in enumerate(request.requirements):
+            compatible = []
+            for item in resources:
+                resource_data = item.get("resource", item) if isinstance(item, Mapping) else {}
+                if not isinstance(resource_data, Mapping) or resource_data.get("kind") != requirement.kind:
+                    continue
+                if item.get("available") is False:
+                    continue
+                resource = Resource.from_dict(resource_data)
+                if any(resource.attributes.get(key) != value for key, value in requirement.selectors.items()):
+                    continue
+                if any(float(resource.capacities.get(key, 0)) < float(value) for key, value in requirement.quantities.items()):
+                    continue
+                compatible.append(resource)
+            releases = [active_job_release[item.resource_id] for item in compatible if item.resource_id in active_job_release]
+            earliest_offset = 0.0 if whole_bundle_fits else (min(releases) if releases else float(horizon))
+            feasible_window = whole_bundle_fits or bool(releases)
+            candidates.append({
+                "candidate_id": f"requirement-{requirement_index}",
+                "resource_ids": [item.resource_id for item in compatible],
+                "earliest_start": _iso(now + timedelta(seconds=min(earliest_offset, float(horizon)))),
+                "latest_start": _iso(now + timedelta(seconds=float(horizon))),
+                "expected_release": _iso(now + timedelta(seconds=earliest_offset)) if releases and earliest_offset <= horizon else None,
+                "uncertainty_seconds": float(horizon if not releases else min(float(horizon), max(1.0, earliest_offset * 0.5))),
+                "feasible_now": whole_bundle_fits and bool(compatible),
+                "blocking_reasons": [] if feasible_window else (["no_compatible_observed_capacity"] if not compatible else ["capacity_or_protected_claims"]),
+            })
+            if len(candidates) >= limit:
+                break
+        return {
+            "generated_at": _iso(now), "horizon_seconds": float(horizon),
+            "current_resources": [
+                {"resource_id": item.resource_id, "host_id": item.host_id, "kind": item.kind,
+                 "capacities": dict(item.capacities), "topology": dict(item.topology)}
+                for item in [Resource.from_dict((status.get("resource", status))) for status in resources if isinstance(status, Mapping)]
+            ][:limit],
+            "current_allocations": current_allocations[:limit],
+            "known_queued_interactive_jobs": queue_count,
+            "known_pending_priority_demands": pending_demand_count,
+            "known_schedules": known_schedules,
+            "candidates": candidates[:limit], "advisory_only": True,
+        }
 
     def _external_lease_reclamation_path(
         self, allocations: Sequence[ResourceAllocation], *, usage: str = LeaseUsage.EXTERNAL.value
@@ -2210,6 +2679,9 @@ class Scheduler:
             if not dependencies_ready(self.ledger, spec.dependencies) or not event_ready(self.ledger, spec.event_trigger, created_at=job.get("created_at")):
                 self._update_job(str(job.get("id", job.get("job_id"))), {"state": "blocked", "blocked_reason": "dependency_or_event_pending"})
                 continue
+            if self._blocked_by_priority_lease_demand(spec):
+                self._update_job(str(job.get("id", job.get("job_id"))), {"state": "blocked", "blocked_reason": "priority_lease_demand_pending"})
+                continue
             candidates.append(job)
         preemption_attempted = False
         while candidates:
@@ -2241,6 +2713,45 @@ class Scheduler:
                 # transaction remains authoritative under cross-process races.
                 self._update_job(str(job.get("id", job.get("job_id"))), {"state": "blocked", "blocked_reason": str(exc)[:500]})
         return started
+
+    def _blocked_by_priority_lease_demand(self, spec: JobSpec) -> bool:
+        if not spec.flexible or not spec.resources:
+            return False
+        for demand in self.ledger.list("lease_demands"):
+            if demand.get("state") != "pending":
+                continue
+            try:
+                request = ResourceRequest.from_dict(demand.get("request", {}))
+            except ValidationError:
+                # Corrupt/unknown demand state is treated conservatively.
+                return True
+            if not self._resource_requirements_may_conflict(spec.resources, request.requirements):
+                continue
+            return True
+        return False
+
+    def _resource_requirements_may_conflict(
+        self, left: Sequence[ResourceRequirement], right: Sequence[ResourceRequirement]
+    ) -> bool:
+        try:
+            resources_fn = getattr(self.allocator, "list_resources", None)
+            raw = resources_fn(available_only=True) if callable(resources_fn) else self.ledger.list("resource")
+            resources = [item if isinstance(item, Resource) else Resource.from_dict(item) for item in raw]
+        except Exception:
+            # Unknown topology means we cannot safely claim non-conflict.
+            return True
+        for a in left:
+            for b in right:
+                if a.kind != b.kind:
+                    continue
+                for resource in resources:
+                    if not _requirement_matches_resource(a, resource) or not _requirement_matches_resource(b, resource):
+                        continue
+                    if a.mode == AllocationMode.EXCLUSIVE or b.mode == AllocationMode.EXCLUSIVE:
+                        return True
+                    if set(a.quantities).intersection(b.quantities):
+                        return True
+        return False
 
     def _validate_policy_selection(
         self, decision: Any, candidates: Sequence[Mapping[str, Any]]
@@ -2570,8 +3081,16 @@ class Scheduler:
                         receipt=precondition_receipt,
                     )
                     return None
-            handle = self.executor.start(
+            launch_spec = replace(
                 spec,
+                environment={
+                    **dict(spec.environment),
+                    "DEVICE_SCHEDULER_JOB_ID": job_id,
+                    "DEVICE_SCHEDULER_ATTEMPT_ID": attempt_id,
+                },
+            )
+            handle = self.executor.start(
+                launch_spec,
                 attempt_id=attempt_id,
                 execution_root=execution_root,
                 execution_context=execution_context,
@@ -3111,12 +3630,15 @@ class Scheduler:
         if target.get("reservation_id") or target.get("reservation_phase_id"):
             return False
         spec = JobSpec.from_dict(target["spec"])
-        if not (spec.interruption.restart_safe and spec.interruption.cancellation_supported):
+        if not spec.interruption.cancellation_supported:
             return False
         if spec.priority_class != "background":
             return False
         attempt_count = target.get("attempt_count", 0)
-        if isinstance(attempt_count, bool) or not isinstance(attempt_count, int) or attempt_count >= spec.max_attempts:
+        if spec.preemption_action.value == "abandon":
+            if not spec.flexible:
+                return False
+        elif not spec.interruption.restart_safe or isinstance(attempt_count, bool) or not isinstance(attempt_count, int) or attempt_count >= spec.max_attempts:
             return False
         lease_id = target.get("lease_id")
         attempt_id = target.get("attempt_id")
@@ -3167,7 +3689,7 @@ class Scheduler:
         operation = self._ensure_operation(operation_id, "job.preempt", payload, str(requester.get("owner", "scheduler")))
         if operation.get("status") == "complete":
             receipt = operation.get("receipt") or {}
-            return receipt.get("target_requeued") is True
+            return receipt.get("target_requeued") is True or receipt.get("target_abandoned") is True
         return self._resume_preemption(operation_id, payload)
 
     def _resume_preemption(self, operation_id: str, payload: Mapping[str, Any]) -> bool:
@@ -3197,7 +3719,6 @@ class Scheduler:
                 target.get("reservation_id")
                 or target.get("lease_binding") == "supervised"
                 or spec.priority_class != "background"
-                or not spec.interruption.restart_safe
                 or not spec.interruption.cancellation_supported
                 or not self._preemption_would_unblock(requester_spec, target)
             ):
@@ -3258,13 +3779,17 @@ class Scheduler:
         requester_feasible: bool = False,
     ) -> bool:
         now = _iso(_now(self.clock))
+        target_record = self.ledger.get("jobs", target_id)
+        target_spec = JobSpec.from_dict(target_record.get("spec", {})) if target_record else None
+        abandon = target_spec is not None and target_spec.preemption_action.value == "abandon"
         receipt = {
             "state": "preempted",
             "requester_job_id": requester_id,
             "target_job_id": target_id,
             "target_attempt_id": attempt_id,
             "target_lease_id": lease_id,
-            "target_requeued": True,
+            "target_requeued": not abandon,
+            "target_abandoned": abandon,
             "requester_feasible_after_cleanup": requester_feasible,
         }
         with self.ledger.transaction() as tx:
@@ -3284,13 +3809,17 @@ class Scheduler:
             attempt_data = _without_revision(attempt)
             attempt_data["preemption"] = {
                 "requester_job_id": requester_id,
-                "reason": "cancel_and_restart",
+                "reason": "cancel_and_abandon" if abandon else "cancel_and_restart",
                 "recorded_at": now,
             }
             tx.put("attempts", attempt_id, attempt_data, attempt[_REVISION])
             target_data = _without_revision(target)
-            target_data.update(
-                {
+            target_data.update({
+                    "preemption_count": int(target_data.get("preemption_count", 0)) + 1,
+                    "updated_at": now,
+                })
+            if not abandon:
+                target_data.update({
                     "state": "queued",
                     "lease_id": None,
                     "lease_fencing_token": None,
@@ -3298,10 +3827,7 @@ class Scheduler:
                     "result": None,
                     "cleanup_verified": False,
                     "blocked_reason": f"preempted_for:{requester_id}",
-                    "preemption_count": int(target_data.get("preemption_count", 0)) + 1,
-                    "updated_at": now,
-                }
-            )
+                })
             tx.put("jobs", target_id, target_data, target[_REVISION])
             tx.event("job.preempted", target_id, {"requester_job_id": requester_id, "attempt_id": attempt_id})
             if operation.get("status") in {"intent", "unknown"}:
@@ -3317,6 +3843,16 @@ class Scheduler:
             payload = operation.get("request")
             if isinstance(payload, Mapping) and self._resume_preemption(str(operation.get("operation_id")), payload):
                 recovered.append({"operation_id": operation.get("operation_id"), "state": "complete"})
+        return recovered
+
+    def _reconcile_lease_demands(self) -> list[dict[str, Any]]:
+        recovered = []
+        for demand in self.ledger.list("lease_demands"):
+            if demand.get("state") != "pending":
+                continue
+            key = f"{demand.get('owner')}:{demand.get('demand_id')}"
+            result = self._process_lease_demand(key)
+            recovered.append({"demand_id": demand.get("demand_id"), "state": result.get("state")})
         return recovered
 
     def _persist_resolved_handle(self, job_id: str, attempt_id: str, handle: ExecutionHandle) -> None:
@@ -3757,6 +4293,17 @@ class Scheduler:
                 supported_paths.add(str(capability.get("mode")))
         return {
             "adapters": adapters,
+            "extensions": {
+                "priority_lease_demand": {
+                    "supported": True,
+                    "operation": "leases.demand",
+                    "minimum_principal_priority": 70,
+                    "preemption": "flexible background jobs only; verified cleanup before lease grant",
+                },
+                "resource_forecast": {"supported": True, "operation": "resources.forecast", "max_horizon_seconds": 600, "max_candidates": 64, "reserves_capacity": False},
+                "packet_runtime": {"supported": True, "expected_duration_is_advisory": True, "kill_timeout_includes_termination_grace": True},
+                "autobench_history_retention": {"supported": callable(getattr(self.ledger, "compact_autobench_history", None)), "operation": "history.compact", "owner_scoped": True},
+            },
             "external_leases": {
                 "supported": bool(supported_paths),
                 "modes": sorted(supported_paths),
@@ -3960,7 +4507,9 @@ class Scheduler:
         event_scoped = operation == "events.publish" and any(
             action.startswith("events.publish:") for action in actor.actions
         )
-        if not self._has(actor, operation) and not event_scoped:
+        retention_scoped = operation == "history.compact" and self._has(actor, "history.compact:autobench")
+        autobench_history_scoped = operation == "history.status" and self._has(actor, "history.compact:autobench")
+        if not self._has(actor, operation) and not event_scoped and not retention_scoped and not autobench_history_scoped:
             raise PermissionDeniedError(f"principal is not authorized for {operation}")
 
     @staticmethod

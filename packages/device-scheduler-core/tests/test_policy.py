@@ -35,12 +35,26 @@ class WeightedFairPolicyTests(unittest.TestCase):
         self.assertEqual([item.request_id for item in decisions], ["interactive", "normal", "background"])
         self.assertTrue(all(isinstance(item, QueuePriorityDecision) for item in decisions))
 
-    def test_aging_can_promote_background_work(self) -> None:
+    def test_fresh_interactive_stays_above_aged_background(self) -> None:
         old_background = self.request("old", "b", "background", age=1000)
         new_interactive = self.request("new", "i", "interactive")
         ranked = self.policy.rank_requests([new_interactive, old_background], now=self.now)
+        self.assertEqual(ranked[0].request_id, "new")
+
+    def test_aging_can_promote_background_within_its_tier(self) -> None:
+        old_background = self.request("old", "b", "background", age=1000)
+        new_background = self.request("new", "c", "background")
+        ranked = self.policy.rank_requests([new_background, old_background], now=self.now)
         self.assertEqual(ranked[0].request_id, "old")
         self.assertEqual(ranked[0].reason_code, "queue_aging")
+
+    def test_expected_duration_breaks_only_equal_policy_score_ties(self) -> None:
+        short = {"job_id": "short", "owner_id": "a", "priority_class": "background", "priority": 50,
+                 "created_at": self.now, "spec": {"expected_duration_seconds": 10}}
+        long = {"job_id": "long", "owner_id": "a", "priority_class": "background", "priority": 50,
+                "created_at": self.now, "spec": {"expected_duration_seconds": 60}}
+        ranked = self.policy.rank_requests([long, short], now=self.now)
+        assert [item.request_id for item in ranked] == ["short", "long"]
 
     def test_weighted_fairness_accounts_for_recent_service(self) -> None:
         a = self.request("a", "well-served", "normal")
@@ -53,7 +67,7 @@ class WeightedFairPolicyTests(unittest.TestCase):
 
     def test_aged_request_protection_and_safe_backfill(self) -> None:
         large = self.request("large", "old-owner", "normal", age=400)
-        small = self.request("small", "other", "interactive")
+        small = self.request("small", "other", "normal")
         chosen = self.policy.choose_next(
             [small, large], can_fit=lambda _: True, now=self.now,
         )

@@ -14,31 +14,33 @@ from device_scheduler_core.models import BackendSpec, HandoffSpec, JobSpec, Reso
 
 
 BOOTSTRAP_OPERATIONS = (
-    "resources.list", "resources.capabilities", "access.inspect",
-    "leases.request", "leases.get", "leases.list", "leases.renew", "leases.release",
+    "resources.list", "resources.capabilities", "resources.forecast", "access.inspect",
+    "leases.request", "leases.demand", "leases.get", "leases.list", "leases.renew", "leases.release",
     "jobs.submit", "jobs.get", "jobs.list", "jobs.wait", "jobs.logs", "jobs.control",
     "backends.register", "backends.get", "backends.list", "backends.control", "backends.attach",
     "handoffs.submit", "handoffs.get", "handoffs.list", "handoffs.control",
     "schedules.put", "schedules.get", "schedules.list", "schedules.control",
     "events.publish", "policies.explain", "policies.simulate",
-    "admin.status", "admin.reconcile", "admin.backup",
+    "admin.status", "admin.reconcile", "admin.backup", "history.compact", "history.status",
 )
 
 READ_ONLY_OPERATIONS = frozenset({
-    "resources.list", "resources.capabilities", "access.inspect",
+    "resources.list", "resources.capabilities", "resources.forecast", "access.inspect",
     "leases.get", "leases.list",
     "jobs.get", "jobs.list", "jobs.wait", "jobs.logs",
     "backends.get", "backends.list",
     "handoffs.get", "handoffs.list",
     "schedules.get", "schedules.list",
-    "policies.explain", "policies.simulate", "admin.status",
+    "policies.explain", "policies.simulate", "admin.status", "history.status",
 })
 
 DESCRIPTIONS = {
     "resources.list": "List current host resources and their observed capabilities.",
     "resources.capabilities": "Describe the resource and adapter capabilities available to this scheduler.",
+    "resources.forecast": "Forecast advisory resource windows without reserving capacity.",
     "access.inspect": "Show this caller's effective scheduler access and resource scope.",
     "leases.request": "Request an atomic resource lease using the caller's granted scope.",
+    "leases.demand": "Durably request an interactive lease and preempt eligible flexible background jobs after verified cleanup.",
     "leases.get": "Inspect one resource lease and its reclamation state.",
     "leases.list": "List leases visible to the authenticated principal.",
     "leases.renew": "Renew an owned lease within its grant and policy limits.",
@@ -68,6 +70,8 @@ DESCRIPTIONS = {
     "admin.status": "Inspect scheduler health and verified adapter state.",
     "admin.reconcile": "Inspect and reconcile operations within administrative authority.",
     "admin.backup": "Create or inspect a consistent scheduler ledger backup.",
+    "history.compact": "Compact explicitly opted-in Autobench history owned by the caller.",
+    "history.status": "Report aggregate scheduler ledger storage usage for retention monitoring.",
 }
 
 
@@ -98,8 +102,11 @@ def _schema(fields: Mapping[str, dict[str, Any]] | None = None, required: tuple[
 # These are the public operation contracts. Nested core DTOs remain open JSON
 # objects because the core validates their authoritative, versioned shapes.
 _OPERATION_FIELDS: dict[str, tuple[dict[str, dict[str, Any]], tuple[str, ...]]] = {
-    "resources.list": ({}, ()), "resources.capabilities": ({}, ()), "access.inspect": ({}, ()),
+    "resources.list": ({}, ()), "resources.capabilities": ({}, ()),
+    "resources.forecast": ({"request": _OBJECT, "horizon_seconds": _NUMBER, "max_candidates": _INTEGER}, ("request",)),
+    "access.inspect": ({}, ()),
     "leases.request": ({"request": _OBJECT, "idempotency_key": _STRING}, ("request",)),
+    "leases.demand": ({"action": {"type": "string", "enum": ["request", "get", "wait", "cancel"]}, "demand_id": _STRING, "request": _OBJECT, "wait_seconds": _NUMBER}, ("demand_id",)),
     "leases.get": ({"lease_id": _STRING}, ("lease_id",)),
     "leases.list": ({"state": _STRING}, ()),
     "leases.renew": ({"lease_id": _STRING, "fencing_token": _INTEGER, "ttl_seconds": _NUMBER}, ("lease_id", "fencing_token", "ttl_seconds")),
@@ -123,6 +130,8 @@ _OPERATION_FIELDS: dict[str, tuple[dict[str, dict[str, Any]], tuple[str, ...]]] 
     "policies.simulate": ({"observations": {"type": "array", "items": _OBJECT}, "operation": _STRING, "service_by_owner": _OBJECT}, ("observations",)),
     "admin.status": ({}, ()), "admin.reconcile": ({}, ()),
     "admin.backup": ({"destination": _STRING}, ()),
+    "history.compact": ({"before": {"type": "string", "format": "date-time"}, "max_records": _INTEGER}, ()),
+    "history.status": ({}, ()),
 }
 
 _NESTED_MODELS: dict[str, dict[str, type[Any]]] = {

@@ -26,6 +26,7 @@ from device_scheduler_core.models import (
     ExecutionHandle,
     Principal,
     Resource,
+    JobSpec,
 )
 
 
@@ -63,6 +64,7 @@ class FakeExecutor:
         self.state = "succeeded"
         self.cleanup_verified = True
         self.contexts: dict[str, ExecutionContext] = {}
+        self.launch_specs: dict[str, Any] = {}
 
     def capabilities(self) -> list[dict[str, Any]]:
         return []
@@ -76,6 +78,7 @@ class FakeExecutor:
         execution_context: ExecutionContext | None = None,
     ) -> ExecutionHandle:
         self.starts.append(attempt_id)
+        self.launch_specs[attempt_id] = spec
         assert execution_context is not None
         self.contexts[attempt_id] = execution_context
         handle = ExecutionHandle(
@@ -1686,6 +1689,379 @@ def test_restart_safe_background_job_can_be_preempted_and_requeued(tmp_path: Pat
     preemption_ops = [item for item in scheduler.ledger.operations() if item["operation"] == "job.preempt"]
     assert len(preemption_ops) == 1
     assert preemption_ops[0]["status"] == "complete"
+
+
+def test_scheduler_overwrites_job_and_attempt_environment_identity(tmp_path: Path) -> None:
+    work = tmp_path / "work"
+    work.mkdir()
+    executor = FakeExecutor()
+    scheduler = _scheduler(tmp_path, executor=executor)
+    job = scheduler.submit_job(
+        {
+            "owner_id": "agent:one", "argv": ["/usr/bin/true"],
+            "working_directory": str(work),
+            "environment": {"DEVICE_SCHEDULER_JOB_ID": "spoof", "DEVICE_SCHEDULER_ATTEMPT_ID": "spoof"},
+        },
+        "agent:one", "identity:job",
+    )
+    scheduler.tick()
+    record = scheduler.get_job(job["id"])
+    launch_spec = executor.launch_specs[record["attempt_id"]]
+    assert launch_spec.environment["DEVICE_SCHEDULER_JOB_ID"] == job["id"]
+    assert launch_spec.environment["DEVICE_SCHEDULER_ATTEMPT_ID"] == record["attempt_id"]
+
+
+def test_priority_lease_demand_preempts_flexible_packet_after_verified_cleanup(tmp_path: Path) -> None:
+    work = tmp_path / "work"
+    work.mkdir()
+    executor = FakeExecutor()
+    executor.state = "running"
+    adapter = ObservedGpuAdapter()
+    scheduler = _scheduler(tmp_path, executor=executor, adapters=(adapter,))
+    gpu_req = [{
+        "kind": "gpu", "selectors": {"resource_id": "gpu:host:GPU-test"},
+        "quantities": {"gpu_memory_bytes": 1}, "mode": "exclusive",
+    }]
+    background = scheduler.submit_job({
+        "owner_id": "agent:one", "argv": ["/usr/bin/sleep", "60"],
+        "working_directory": str(work), "resources": gpu_req,
+        "priority_class": "background", "flexible": True,
+        "max_attempts": 2,
+        "interruption": {"restart_safe": True, "cancellation_supported": True},
+    }, "agent:one", "background:demand-test")
+    scheduler.tick()
+    assert scheduler.get_job(background["id"])["state"] == "running"
+
+    response = scheduler.dispatch("leases.demand", {
+        "action": "request", "demand_id": "interactive:demand-1",
+        "request": {"requirements": gpu_req, "lease_ttl_seconds": 600},
+    }, _principal("leases.demand", "leases.request", "leases.release", max_priority=70))
+    assert response["state"] == "granted"
+    assert response["lease"]["state"] == "active"
+    assert scheduler.get_job(background["id"])["state"] == "queued"
+    assert scheduler.get_job(background["id"])["attempt_count"] == 1
+    assert scheduler.get_job(background["id"])["cleanup_verified"] is False
+    old_attempt = scheduler.ledger.get("attempts", scheduler.get_job(background["id"])["attempt_id"])["result"]
+    assert old_attempt["cleanup_verified"] is True
+
+
+def test_priority_lease_demand_abandons_final_single_attempt_when_declared(tmp_path: Path) -> None:
+    work = tmp_path / "work"
+    work.mkdir()
+    executor = FakeExecutor()
+    executor.state = "running"
+    scheduler = _scheduler(tmp_path, executor=executor, adapters=(ObservedGpuAdapter(),))
+    gpu_req = [{
+        "kind": "gpu", "selectors": {"resource_id": "gpu:host:GPU-test"},
+        "quantities": {"gpu_memory_bytes": 1}, "mode": "exclusive",
+    }]
+    background = scheduler.submit_job({
+        "owner_id": "agent:one", "argv": ["/usr/bin/sleep", "60"],
+        "working_directory": str(work), "resources": gpu_req,
+        "priority_class": "background", "flexible": True,
+        "max_attempts": 1, "preemption_action": "abandon",
+        "interruption": {"restart_safe": False, "cancellation_supported": True},
+    }, "agent:one", "background:abandon-test")
+    scheduler.tick()
+    demand = scheduler.dispatch("leases.demand", {
+        "demand_id": "interactive:demand-final",
+        "request": {"requirements": gpu_req, "lease_ttl_seconds": 600},
+    }, _principal("leases.demand", "leases.request", "leases.release", max_priority=70))
+    assert demand["state"] == "granted"
+    cancelled = scheduler.get_job(background["id"])
+    assert cancelled["state"] == "cancelled"
+    assert cancelled["cleanup_verified"] is True
+
+
+def test_priority_lease_demand_preempts_minimum_cumulative_victim_set(tmp_path: Path) -> None:
+    class TwoGpuAdapter(ObservedGpuAdapter):
+        def snapshot(self) -> Mapping[str, Any]:
+            snapshot = dict(super().snapshot())
+            base = snapshot["resources"][0]
+            snapshot["resources"] = [
+                Resource("gpu:host:GPU-test-0", "host:local", "gpu", dict(base.capacities), attributes={**base.attributes, "uuid": "GPU-test-0"}),
+                Resource("gpu:host:GPU-test-1", "host:local", "gpu", dict(base.capacities), attributes={**base.attributes, "uuid": "GPU-test-1"}),
+                Resource("gpu:host:GPU-test-2", "host:local", "gpu", dict(base.capacities), attributes={**base.attributes, "uuid": "GPU-test-2"}),
+            ]
+            return snapshot
+
+    work = tmp_path / "work"
+    work.mkdir()
+    executor = FakeExecutor()
+    executor.state = "running"
+    scheduler = _scheduler(tmp_path, executor=executor, adapters=(TwoGpuAdapter(),))
+    all_requirements = [
+        {"kind": "gpu", "selectors": {"resource_id": f"gpu:host:GPU-test-{index}"},
+         "quantities": {"gpu_memory_bytes": 1}, "mode": "exclusive"}
+        for index in range(3)
+    ]
+    jobs = []
+    for index in range(3):
+        jobs.append(scheduler.submit_job({
+            "owner_id": "agent:one", "argv": ["/usr/bin/sleep", "60"],
+            "working_directory": str(work), "resources": [all_requirements[index]],
+            "priority_class": "background", "flexible": True,
+            "max_attempts": 2, "expected_duration_seconds": 10 if index == 2 else 20 + index,
+            "interruption": {"restart_safe": True, "cancellation_supported": True},
+        }, "agent:one", f"background:multi:{index}"))
+    scheduler.tick()
+    assert all(scheduler.get_job(job["id"])["state"] == "running" for job in jobs)
+    result = scheduler.dispatch("leases.demand", {
+        "demand_id": "interactive:two-gpu-demand",
+        "request": {"requirements": all_requirements[:2], "lease_ttl_seconds": 600},
+    }, _principal("leases.demand", "leases.request", "leases.release", max_priority=70))
+    assert result["state"] == "granted"
+    assert [scheduler.get_job(job["id"])["state"] for job in jobs] == ["queued", "queued", "running"]
+
+
+def test_priority_lease_demand_is_idempotent_and_forecast_does_not_reserve(tmp_path: Path) -> None:
+    scheduler = _scheduler(tmp_path, adapters=(ObservedGpuAdapter(),))
+    principal = _principal("leases.demand", "leases.request", "leases.release", "resources.forecast", max_priority=70)
+    request = {"requirements": [{
+        "kind": "gpu", "selectors": {"resource_id": "gpu:host:GPU-test"},
+        "quantities": {"gpu_memory_bytes": 1}, "mode": "exclusive",
+    }], "lease_ttl_seconds": 600}
+    first = scheduler.dispatch("leases.demand", {"demand_id": "gpu:demand-idempotent", "request": request}, principal)
+    replay = scheduler.dispatch("leases.demand", {"demand_id": "gpu:demand-idempotent", "request": request}, principal)
+    assert first == replay
+    with pytest.raises(ConflictError, match="different request"):
+        scheduler.dispatch("leases.demand", {"demand_id": "gpu:demand-idempotent", "request": {**request, "lease_ttl_seconds": 500}}, principal)
+    count_before = len(scheduler.allocator.list_leases())
+    forecast = scheduler.dispatch("resources.forecast", {"request": {"owner_id": "agent:one", **request}}, principal)
+    assert forecast["advisory_only"] is True
+    assert forecast["horizon_seconds"] == 600
+    assert len(scheduler.allocator.list_leases()) == count_before
+
+
+def test_cancel_serializes_with_inflight_priority_demand_grant(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    scheduler = _scheduler(tmp_path, adapters=(ObservedGpuAdapter(),))
+    actor = _principal("leases.demand", "leases.request", "leases.release", max_priority=70)
+    request = {"requirements": [{
+        "kind": "gpu", "selectors": {"resource_id": "gpu:host:GPU-test"},
+        "quantities": {"gpu_memory_bytes": 1}, "mode": "exclusive",
+    }], "lease_ttl_seconds": 600}
+    original = scheduler._request_lease
+
+    def unavailable(_args, _actor):
+        raise ConflictError("fixture capacity is temporarily unavailable")
+
+    monkeypatch.setattr(scheduler, "_request_lease", unavailable)
+    pending = scheduler.dispatch("leases.demand", {"demand_id": "race:demand", "request": request}, actor)
+    assert pending["state"] == "pending"
+    entered = Event()
+    release = Event()
+    late_result: list[Any] = []
+
+    def blocked_grant(args, principal):
+        entered.set()
+        assert release.wait(timeout=2)
+        try:
+            result = original(args, principal)
+            late_result.append(result)
+            return result
+        except Exception as exc:
+            late_result.append(exc)
+            raise
+
+    monkeypatch.setattr(scheduler, "_request_lease", blocked_grant)
+    wait_result: list[dict[str, Any]] = []
+    cancel_result: list[Any] = []
+    cancel_started = Event()
+
+    waiter = Thread(target=lambda: wait_result.append(scheduler.dispatch(
+        "leases.demand", {"action": "wait", "demand_id": "race:demand", "wait_seconds": 1}, actor,
+    )))
+    waiter.start()
+    assert entered.wait(timeout=1)
+
+    def cancel() -> None:
+        cancel_started.set()
+        try:
+            cancel_result.append(scheduler.dispatch("leases.demand", {"action": "cancel", "demand_id": "race:demand"}, actor))
+        except ConflictError as exc:
+            cancel_result.append(exc)
+
+    canceller = Thread(target=cancel)
+    canceller.start()
+    assert cancel_started.wait(timeout=1)
+    assert not cancel_result
+    release.set()
+    waiter.join(timeout=2)
+    canceller.join(timeout=2)
+    assert not waiter.is_alive() and not canceller.is_alive()
+    assert wait_result[0]["state"] == "granted"
+    assert len(cancel_result) == 1 and isinstance(cancel_result[0], ConflictError)
+    current = scheduler.dispatch("leases.demand", {"action": "get", "demand_id": "race:demand"}, actor)
+    assert current["state"] == "granted"
+
+
+def test_expired_priority_demand_releases_late_grant(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = MutableClock()
+    clock.current = datetime.now(timezone.utc)
+    scheduler = _scheduler(tmp_path, adapters=(ObservedGpuAdapter(),), clock=clock)
+    actor = _principal("leases.demand", "leases.request", "leases.release", max_priority=70)
+    request = {"requirements": [{
+        "kind": "gpu", "selectors": {"resource_id": "gpu:host:GPU-test"},
+        "quantities": {"gpu_memory_bytes": 1}, "mode": "exclusive",
+    }], "lease_ttl_seconds": 600}
+    original = scheduler._request_lease
+
+    def unavailable(_args, _actor):
+        raise ConflictError("fixture capacity is temporarily unavailable")
+
+    monkeypatch.setattr(scheduler, "_request_lease", unavailable)
+    pending = scheduler.dispatch("leases.demand", {"demand_id": "expiry:demand", "request": request}, actor)
+    assert pending["state"] == "pending"
+    record = scheduler.ledger.get("lease_demands", "agent:one:expiry:demand")
+    record_data = {key: value for key, value in record.items() if key != "_revision"}
+    record_data["expires_at"] = (clock.current + timedelta(seconds=1)).isoformat()
+    scheduler.ledger.put("lease_demands", "agent:one:expiry:demand", record_data, record["_revision"])
+    entered = Event()
+    release = Event()
+    late_result: list[Any] = []
+
+    def blocked_grant(args, principal):
+        entered.set()
+        assert release.wait(timeout=2)
+        try:
+            result = original(args, principal)
+            late_result.append(result)
+            return result
+        except Exception as exc:
+            late_result.append(exc)
+            raise
+
+    monkeypatch.setattr(scheduler, "_request_lease", blocked_grant)
+    waited: list[dict[str, Any]] = []
+    waiter = Thread(target=lambda: waited.append(scheduler.dispatch(
+        "leases.demand", {"action": "wait", "demand_id": "expiry:demand", "wait_seconds": 1}, actor,
+    )))
+    waiter.start()
+    assert entered.wait(timeout=1)
+    clock.advance(2)
+    release.set()
+    waiter.join(timeout=2)
+    assert not waiter.is_alive()
+    assert late_result, "grant call was not reached"
+    assert waited[0]["state"] == "expired"
+    demand = scheduler.dispatch("leases.demand", {"action": "get", "demand_id": "expiry:demand"}, actor)
+    assert demand["state"] == "expired"
+    assert demand["late_grant_cleanup"]["state"] == "released"
+    assert scheduler.allocator.list_leases(state="active") == []
+
+
+def test_autobench_history_compaction_is_opt_in_owner_scoped_and_replay_safe(tmp_path: Path) -> None:
+    work = tmp_path / "work"
+    work.mkdir()
+    clock = MutableClock()
+    scheduler = _scheduler(tmp_path, executor=FakeExecutor(), clock=clock)
+    autobench_key = f"autobench-v1:{int((clock.current + timedelta(seconds=1)).timestamp())}:attempt-unique"
+    compacted_spec = {
+        "owner_id": "agent:one", "argv": ["/usr/bin/true"],
+        "working_directory": str(work), "retention_policy": "autobench",
+        "idempotency_key": autobench_key,
+    }
+    compacted = scheduler.submit_job(compacted_spec, "agent:one", autobench_key)
+    preserved = scheduler.submit_job({
+        "owner_id": "agent:one", "argv": ["/usr/bin/true"],
+        "working_directory": str(work),
+    }, "agent:one", "preserved-job-key")
+    scheduler.tick()
+    scheduler.tick()
+    clock.advance(2)
+    actor = _principal("history.compact:autobench", "history.status")
+    result = scheduler.dispatch("history.compact", {
+        "before": (datetime.now(timezone.utc) + timedelta(days=1)).isoformat(), "max_records": 10,
+    }, actor)
+    assert result["jobs_purged"] == 1
+    assert result["storage_usage"]["database_bytes"] > 0
+    assert scheduler.ledger.get("jobs", compacted["id"]) is None
+    assert scheduler.get_job(preserved["id"]).get("retention_compacted") is None
+    usage = scheduler.dispatch("history.status", {}, actor)
+    assert usage["owner_id"] == "agent:one"
+    assert usage["owner_usage"]["job_count"] == 0
+    assert usage["configured_limits"]["bytes"] == 64 * 1024 * 1024
+    with pytest.raises(ConflictError, match="window has expired"):
+        scheduler.submit_job(compacted_spec, "agent:one", autobench_key)
+
+
+def test_autobench_submission_rejects_missing_expired_and_overlong_windows(tmp_path: Path) -> None:
+    work = tmp_path / "work"
+    work.mkdir()
+    clock = MutableClock()
+    scheduler = _scheduler(tmp_path, clock=clock)
+    base = {
+        "owner_id": "agent:one", "argv": ["/usr/bin/true"],
+        "working_directory": str(work), "retention_policy": "autobench",
+    }
+    with pytest.raises(ValidationError, match="autobench-v1"):
+        scheduler.submit_job(base, "agent:one", "legacy-key")
+    expired = f"autobench-v1:{int(clock.current.timestamp())}:old-attempt"
+    with pytest.raises(ConflictError, match="window has expired"):
+        scheduler.submit_job(base, "agent:one", expired)
+    too_far = f"autobench-v1:{int((clock.current + timedelta(days=31)).timestamp())}:future-attempt"
+    with pytest.raises(ValidationError, match="at most 30 days"):
+        scheduler.submit_job(base, "agent:one", too_far)
+
+
+def test_autobench_admission_fails_closed_at_configured_owner_budget(tmp_path: Path) -> None:
+    ledger = Ledger(tmp_path / "ledger.sqlite3")
+    clock = MutableClock()
+    scheduler = Scheduler(
+        ledger,
+        ResourceAllocator(ledger, clock=clock.now),
+        clock=clock,
+        config=SchedulerConfig(
+            state_root=tmp_path / "state",
+            execution_root=tmp_path / "executions",
+            artifact_root=tmp_path / "artifacts",
+            autobench_history_owner_limit_bytes=1024,
+            autobench_history_owner_limit_rows=8,
+        ),
+    )
+    work = tmp_path / "work"
+    work.mkdir()
+    key = f"autobench-v1:{int((clock.current + timedelta(days=7)).timestamp())}:budget-attempt"
+    with pytest.raises(ConflictError, match="Autobench owner ledger budget"):
+        scheduler.submit_job({
+            "owner_id": "agent:one", "argv": ["/usr/bin/true"],
+            "working_directory": str(work), "retention_policy": "autobench",
+        }, "agent:one", key)
+    assert scheduler.ledger.list("jobs") == []
+
+
+def test_autobench_repeated_epochs_keep_owner_rows_and_sqlite_file_bounded(tmp_path: Path) -> None:
+    work = tmp_path / "work"
+    work.mkdir()
+    clock = MutableClock()
+    scheduler = _scheduler(tmp_path, executor=FakeExecutor(), clock=clock)
+    actor = _principal("history.compact:autobench", "history.status")
+    initial_db_bytes = scheduler.ledger.storage_usage()["database_bytes"]
+
+    for attempt in range(8):
+        key = f"autobench-v1:{int((clock.current + timedelta(seconds=1)).timestamp())}:epoch-{attempt}"
+        job = scheduler.submit_job({
+            "owner_id": "agent:one", "argv": ["/usr/bin/true"],
+            "working_directory": str(work), "retention_policy": "autobench",
+        }, "agent:one", key)
+        scheduler.tick()
+        scheduler.tick()
+        assert scheduler.get_job(job["id"])["state"] == "succeeded"
+        clock.advance(2)
+        compacted = scheduler.dispatch("history.compact", {
+            "before": (datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
+            "max_records": 10,
+        }, actor)
+        assert compacted["jobs_purged"] == 1
+        usage = scheduler.dispatch("history.status", {}, actor)
+        assert usage["owner_usage"]["row_count"] == 0
+        assert usage["owner_usage"]["logical_payload_bytes"] == 0
+        assert compacted["database_bytes_after_reclaim"] <= max(initial_db_bytes, compacted["database_bytes_before"])
+        with pytest.raises(ConflictError, match="window has expired"):
+            scheduler.submit_job({
+                "owner_id": "agent:one", "argv": ["/usr/bin/true"],
+                "working_directory": str(work), "retention_policy": "autobench",
+            }, "agent:one", key)
 
 
 def test_external_gpu_capability_advertises_budget_after_observed_headroom(tmp_path: Path) -> None:

@@ -85,6 +85,40 @@ def test_sdk_typed_helpers_use_core_models_and_canonical_operations(tmp_path: Pa
     assert recorded[3][1] == {"job_id": "job-1", "timeout_seconds": 12}
 
 
+def test_sdk_priority_demand_and_forecast_helpers_use_public_schemas(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    token_path = tmp_path / "client.token"
+    _token_file(token_path)
+    client = DeviceSchedulerClient("http://localhost:8770", token_path)
+    recorded: list[tuple[str, dict[str, object]]] = []
+
+    async def call(operation: str, arguments: dict[str, object] | None = None) -> dict[str, object]:
+        payload = dict(arguments or {})
+        recorded.append((operation, payload))
+        return {"state": "pending"}
+
+    monkeypatch.setattr(client, "call", call)
+    request = {
+        "requirements": [{"kind": "gpu", "quantities": {"gpu_memory_bytes": 1}, "mode": "exclusive"}],
+        "lease_ttl_seconds": 120,
+    }
+
+    async def run() -> None:
+        await client.request_priority_lease_demand(request, "demand-1", wait_seconds=2)
+        await client.get_priority_lease_demand("demand-1")
+        await client.wait_priority_lease_demand("demand-1", wait_seconds=5)
+        await client.cancel_priority_lease_demand("demand-1")
+        await client.forecast_resources(request)
+
+    asyncio.run(run())
+    assert recorded == [
+        ("leases.demand", {"action": "request", "demand_id": "demand-1", "request": request, "wait_seconds": 2}),
+        ("leases.demand", {"action": "get", "demand_id": "demand-1"}),
+        ("leases.demand", {"action": "wait", "demand_id": "demand-1", "wait_seconds": 5}),
+        ("leases.demand", {"action": "cancel", "demand_id": "demand-1"}),
+        ("resources.forecast", {"request": request, "horizon_seconds": 600, "max_candidates": 64}),
+    ]
+
+
 def test_sdk_rejects_non_loopback_and_unbounded_waits(tmp_path: Path) -> None:
     token_path = tmp_path / "client.token"
     _token_file(token_path)
@@ -115,10 +149,17 @@ def test_mcp_stdio_bridge_registers_and_forwards_the_same_operation_set() -> Non
     assert spec["properties"]["resources"]["items"]["properties"]["quantities"]["type"] == "object"
     assert spec["properties"]["resources"]["items"]["required"] == ["kind", "quantities"]
     assert spec["properties"]["resources"]["items"]["properties"]["mode"]["enum"] == ["shared", "exclusive"]
+    assert {"type": "number"} in spec["properties"]["expected_duration_seconds"]["anyOf"]
+    assert {"type": "number"} in spec["properties"]["kill_timeout_seconds"]["anyOf"]
+    assert spec["properties"]["preemption_action"]["enum"] == ["restart", "abandon"]
     request = schemas["leases_request"]["properties"]["arguments"]["properties"]["request"]
     assert {"request_id", "owner_id", "requirements", "lease_ttl_seconds"}.issubset(request["required"])
     assert request["properties"]["requirements"]["items"]["properties"]["quantities"]["type"] == "object"
     assert schemas["leases_renew"]["properties"]["arguments"]["required"] == ["lease_id", "fencing_token", "ttl_seconds"]
+    assert "leases_demand" in schemas and "resources_forecast" in schemas
+    tool_map = {tool.name: tool for tool in tools}
+    assert tool_map["resources_forecast"].annotations.readOnlyHint is True
+    assert "history_compact" in schemas and "history_status" in schemas
 
 
 def test_sdk_one_off_job_preserves_handle_when_bounded_wait_times_out(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

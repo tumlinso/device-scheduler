@@ -35,6 +35,7 @@ from device_scheduler_core.models import (
 
 
 _GPU_LABEL = re.compile(r"^GPU(?P<index>\d+)$")
+_SGR_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 
 
 def _number(value: str) -> int | None:
@@ -310,6 +311,9 @@ class NvidiaAdapter:
                 "matrix_complete": False,
             }, error
         assert output is not None
+        # Some drivers underline the header even on captured stdout. Formatting
+        # must not remove a GPU column from the observed topology matrix.
+        output = _SGR_ESCAPE.sub("", output)
         lines = [line.split() for line in output.splitlines() if line.strip()]
         header_index = next(
             (i for i, row in enumerate(lines) if any(_GPU_LABEL.fullmatch(cell) for cell in row)),

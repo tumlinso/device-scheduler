@@ -76,6 +76,32 @@ def test_job_spec_round_trips_as_plain_json_with_enums_and_datetimes() -> None:
     assert restored.not_before == NOW
 
 
+def test_job_spec_packet_estimates_limits_and_preemption_round_trip_with_legacy_defaults() -> None:
+    legacy = JobSpec.from_dict({
+        "owner_id": "agent:legacy", "argv": ["true"], "working_directory": "/tmp",
+    })
+    assert legacy.timeout_seconds == 3600
+    assert legacy.expected_duration_seconds is None
+    assert legacy.kill_timeout_seconds is None
+    assert legacy.termination_grace_seconds is None
+    assert legacy.preemption_action.value == "restart"
+    assert legacy.flexible is False
+
+    packet = JobSpec.from_dict({
+        "owner_id": "autobench", "argv": ["bench"], "working_directory": "/tmp",
+        "expected_duration_seconds": 20, "kill_timeout_seconds": 30,
+        "termination_grace_seconds": 5, "preemption_action": "abandon",
+        "flexible": True, "retention_policy": "autobench",
+    })
+    restored = JobSpec.from_dict(json.loads(json.dumps(packet.to_dict())))
+    assert restored == packet
+    with pytest.raises(ValidationError, match="less than"):
+        JobSpec.from_dict({
+            "owner_id": "autobench", "argv": ["bench"], "working_directory": "/tmp",
+            "timeout_seconds": 20, "expected_duration_seconds": 20,
+        })
+
+
 def test_capability_preconditions_are_generic_versioned_json_contracts() -> None:
     original = JobSpec(
         owner_id="agent:kernel-work",

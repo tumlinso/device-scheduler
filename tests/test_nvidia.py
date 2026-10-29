@@ -146,6 +146,15 @@ def test_discovery_emits_gpu_resources_and_closed_topology_isolation_resource() 
     assert any(argv[0] == "nvidia-smi" for argv in fake.calls)
 
 
+def test_topology_with_ansi_header_preserves_complete_matrix() -> None:
+    lines = TOPOLOGY_CONNECTED.splitlines()
+    lines[0] = "\x1b[4m" + lines[0] + "\x1b[0m"
+    snapshot = make_adapter(FakeNvidia(topology="\n".join(lines))).snapshot()
+    assert snapshot["topology"]["matrix_complete"] is True
+    assert snapshot["isolation_domain_support"]["state"] == "observed"
+    assert len([r for r in snapshot["resources"] if r.kind == "isolation"]) == 1
+
+
 def test_partial_topology_does_not_create_an_isolation_domain_or_false_gpu_conflict() -> None:
     incomplete = """        GPU0 GPU1 GPU2
 GPU0     X    NV2  PIX

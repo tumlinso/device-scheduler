@@ -12,6 +12,7 @@ import contextlib
 import hashlib
 import json
 import os
+import re
 import sqlite3
 import threading
 import uuid
@@ -60,6 +61,138 @@ def canonical_json(value: Any) -> str:
 
 def request_digest(value: Any) -> str:
     return hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
+
+
+_AUTOBENCH_KEY = re.compile(r"^autobench-v1:([1-9][0-9]*):([A-Za-z0-9._~-]+)$")
+
+
+def _autobench_key_expiry(record: Mapping[str, Any]) -> int | None:
+    spec = record.get("spec")
+    key = spec.get("idempotency_key") if isinstance(spec, Mapping) else None
+    if not isinstance(key, str):
+        return None
+    match = _AUTOBENCH_KEY.fullmatch(key)
+    return int(match.group(1)) if match else None
+
+
+def _autobench_mentions_job(value: Any, job_ids: set[str]) -> bool:
+    if isinstance(value, Mapping):
+        return any(_autobench_mentions_job(child, job_ids) for child in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(_autobench_mentions_job(child, job_ids) for child in value)
+    return isinstance(value, str) and value in job_ids
+
+
+def _autobench_owner_usage(connection: sqlite3.Connection, owner_id: str) -> dict[str, Any]:
+    """Estimate bytes owned by explicitly opted-in Autobench records."""
+    job_rows = connection.execute("SELECT entity_id, data_json FROM entities WHERE kind='jobs'").fetchall()
+    job_ids: set[str] = set()
+    logical_bytes = 0
+    for row in job_rows:
+        record = json.loads(row["data_json"])
+        spec = record.get("spec")
+        if record.get("owner", record.get("owner_id")) != owner_id or not isinstance(spec, Mapping) or spec.get("retention_policy") != "autobench":
+            continue
+        job_ids.add(str(row["entity_id"]))
+        logical_bytes += len(row["data_json"].encode("utf-8"))
+
+    lease_ids: set[str] = set()
+    for row in job_rows:
+        record = json.loads(row["data_json"])
+        spec = record.get("spec")
+        if (record.get("owner", record.get("owner_id")) == owner_id
+                and isinstance(spec, Mapping) and spec.get("retention_policy") == "autobench"
+                and isinstance(record.get("lease_id"), str)):
+            lease_ids.add(record["lease_id"])
+    lease_count = 0
+    for lease_id in lease_ids:
+        lease = connection.execute("SELECT data_json FROM entities WHERE kind='lease' AND entity_id=?", (lease_id,)).fetchone()
+        if lease is not None:
+            lease_count += 1
+            logical_bytes += len(lease["data_json"].encode("utf-8"))
+
+    attempt_count = 0
+    attempt_ids: set[str] = set()
+    for row in connection.execute("SELECT entity_id,data_json FROM entities WHERE kind='attempts'").fetchall():
+        value = json.loads(row["data_json"])
+        if value.get("job_id") in job_ids:
+            attempt_count += 1
+            attempt_ids.add(str(value.get("attempt_id", row["entity_id"])))
+            logical_bytes += len(row["data_json"].encode("utf-8"))
+
+    event_entity_ids = set(job_ids)
+    for job_id in job_ids:
+        job = connection.execute("SELECT data_json FROM entities WHERE kind='jobs' AND entity_id=?", (job_id,)).fetchone()
+        record = json.loads(job["data_json"]) if job else {}
+        lease_id = record.get("lease_id")
+        if isinstance(lease_id, str):
+            lease = connection.execute("SELECT data_json FROM entities WHERE kind='lease' AND entity_id=?", (lease_id,)).fetchone()
+            lease_record = json.loads(lease["data_json"]) if lease else {}
+            if (lease_record.get("request_id") == f"job:{job_id}"
+                    or lease_record.get("idempotency_key") == f"job-lease:{job_id}"):
+                event_entity_ids.add(lease_id)
+    event_count = 0
+    if event_entity_ids:
+        placeholders = ",".join("?" for _ in event_entity_ids)
+        rows = connection.execute(f"SELECT payload_json FROM events WHERE entity_id IN ({placeholders})", tuple(sorted(event_entity_ids))).fetchall()
+        event_count = len(rows)
+        logical_bytes += sum(len(row["payload_json"].encode("utf-8")) for row in rows)
+
+    decision_count = 0
+    if job_ids:
+        placeholders = ",".join("?" for _ in job_ids)
+        rows = connection.execute(
+            f"SELECT data_json FROM entities WHERE kind='decisions' AND json_extract(data_json,'$.subject_id') IN ({placeholders})",
+            tuple(sorted(job_ids)),
+        ).fetchall()
+        decision_count = len(rows)
+        logical_bytes += sum(len(row["data_json"].encode("utf-8")) for row in rows)
+
+    outbox_count = 0
+    if job_ids or attempt_ids:
+        for row in connection.execute("SELECT payload_json FROM outbox").fetchall():
+            if _autobench_mentions_job(json.loads(row["payload_json"]), job_ids | attempt_ids):
+                outbox_count += 1
+                logical_bytes += len(row["payload_json"].encode("utf-8"))
+
+    operation_ids: set[str] = set()
+    operation_count = 0
+    for row in connection.execute("SELECT operation_id, owner, idempotency_key, request_json, response_json FROM operations").fetchall():
+        if row["owner"] != owner_id:
+            continue
+        request = json.loads(row["request_json"])
+        response = json.loads(row["response_json"]) if row["response_json"] else None
+        key_match = isinstance(row["idempotency_key"], str) and row["idempotency_key"].startswith("autobench-v1:")
+        if key_match or _autobench_mentions_job(request, job_ids | attempt_ids) or _autobench_mentions_job(response, job_ids | attempt_ids):
+            operation_ids.add(str(row["operation_id"]))
+            operation_count += 1
+            logical_bytes += len(row["request_json"].encode("utf-8"))
+            logical_bytes += len(row["response_json"].encode("utf-8")) if row["response_json"] else 0
+
+    receipt_count = 0
+    if operation_ids:
+        placeholders = ",".join("?" for _ in operation_ids)
+        rows = connection.execute(f"SELECT receipt_json FROM operation_receipts WHERE operation_id IN ({placeholders})", tuple(sorted(operation_ids))).fetchall()
+        receipt_count = len(rows)
+        logical_bytes += sum(len(row["receipt_json"].encode("utf-8")) for row in rows)
+    floor_row = connection.execute(
+        "SELECT data_json FROM entities WHERE kind='autobench_retention' AND entity_id=?", (owner_id,)
+    ).fetchone()
+    floor = int(json.loads(floor_row["data_json"]).get("floor_expiry_unix_seconds", 0)) if floor_row else 0
+    return {
+        "owner_id": owner_id,
+        "logical_payload_bytes": logical_bytes,
+        "job_count": len(job_ids),
+        "attempt_count": attempt_count,
+        "event_count": event_count,
+        "decision_count": decision_count,
+        "operation_count": operation_count,
+        "receipt_count": receipt_count,
+        "lease_count": lease_count,
+        "outbox_count": outbox_count,
+        "row_count": len(job_ids) + lease_count + attempt_count + event_count + decision_count + operation_count + receipt_count + outbox_count,
+        "floor_expiry_unix_seconds": floor,
+    }
 
 
 def _now() -> str:
@@ -376,6 +509,63 @@ class LedgerTransaction:
         ).fetchone()
         return int(row["epoch"])
 
+    def autobench_owner_usage(self, owner_id: str) -> dict[str, Any]:
+        if not isinstance(owner_id, str) or not owner_id.strip():
+            raise ValueError("owner_id must be a non-empty string")
+        return _autobench_owner_usage(self._connection, owner_id)
+
+    def check_autobench_owner_budget(
+        self,
+        owner_id: str,
+        *,
+        additional_bytes: int,
+        additional_rows: int = 1,
+        limit_bytes: int = 64 * 1024 * 1024,
+        limit_rows: int = 10_000,
+    ) -> dict[str, Any]:
+        """Fail closed when an owner would exceed its Autobench ledger budget.
+
+        Call this on the transaction passed to the job-submit idempotency
+        callback, before inserting the new job, to make admission atomic with
+        its ledger mutation.
+        """
+        for name, value in (("additional_bytes", additional_bytes), ("additional_rows", additional_rows), ("limit_bytes", limit_bytes), ("limit_rows", limit_rows)):
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"{name} must be a non-negative integer")
+        if limit_bytes == 0 or limit_rows == 0:
+            raise ValueError("limits must be positive")
+        usage = self.autobench_owner_usage(owner_id)
+        projected = int(usage["logical_payload_bytes"]) + additional_bytes
+        projected_rows = int(usage["row_count"]) + additional_rows
+        usage.update({"additional_bytes": additional_bytes, "projected_bytes": projected, "limit_bytes": limit_bytes,
+                      "additional_rows": additional_rows, "projected_rows": projected_rows, "limit_rows": limit_rows})
+        if projected > limit_bytes or projected_rows > limit_rows:
+            raise ConflictError(
+                "Autobench owner ledger budget would be exceeded",
+                details=usage,
+            )
+        return usage
+
+    def validate_autobench_idempotency_key(
+        self,
+        owner_id: str,
+        key: str,
+        *,
+        now_unix_seconds: int | None = None,
+    ) -> int:
+        """Reject expired or already-compacted Autobench submission keys."""
+        match = _AUTOBENCH_KEY.fullmatch(key) if isinstance(key, str) else None
+        if match is None:
+            raise ConflictError("invalid Autobench idempotency key")
+        expiry = int(match.group(1))
+        now_seconds = int(datetime.now(timezone.utc).timestamp()) if now_unix_seconds is None else now_unix_seconds
+        if isinstance(now_seconds, bool) or not isinstance(now_seconds, int):
+            raise ValueError("now_unix_seconds must be an integer")
+        floor = Ledger._autobench_floor(self._connection, owner_id)
+        if expiry <= now_seconds or expiry <= floor:
+            raise ConflictError("Autobench idempotency key has expired")
+        return expiry
+
 
 class Ledger:
     """A process-safe, revisioned entity ledger backed by one SQLite database."""
@@ -386,6 +576,7 @@ class Ledger:
         self.path = Path(path).expanduser().resolve()
         self.busy_timeout_seconds = busy_timeout_seconds
         self._schema_lock = threading.Lock()
+        self._maintenance_lock = threading.Lock()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._initialize()
 
@@ -592,6 +783,297 @@ class Ledger:
     def record_receipt(self, operation_id: str, receipt: Mapping[str, Any], *, status: str = "complete") -> str:
         with self.transaction() as tx:
             return tx.record_receipt(operation_id, receipt, status=status)
+
+    def storage_usage(self) -> dict[str, int]:
+        """Return physical SQLite size and live logical payload bytes.
+
+        SQLite reuses free pages after compaction; this method deliberately
+        reports both logical payload size and on-disk database/WAL size so a
+        caller cannot mistake logical compaction for a hard physical quota.
+        """
+        with contextlib.closing(self._connect()) as conn:
+            page_count = int(conn.execute("PRAGMA page_count").fetchone()[0])
+            page_size = int(conn.execute("PRAGMA page_size").fetchone()[0])
+            logical = 0
+            for table, columns in {
+                "entities": ("data_json",),
+                "events": ("payload_json",),
+                "operations": ("request_json", "response_json"),
+                "operation_receipts": ("receipt_json",),
+                "outbox": ("payload_json",),
+            }.items():
+                expression = " + ".join(f"COALESCE(SUM(length({column})),0)" for column in columns)
+                logical += int(conn.execute(f"SELECT {expression} FROM {table}").fetchone()[0])
+        wal_path = Path(str(self.path) + "-wal")
+        shm_path = Path(str(self.path) + "-shm")
+        return {
+            "database_bytes": self.path.stat().st_size if self.path.exists() else 0,
+            "wal_bytes": wal_path.stat().st_size if wal_path.exists() else 0,
+            "shm_bytes": shm_path.stat().st_size if shm_path.exists() else 0,
+            "logical_payload_bytes": logical,
+            "allocated_page_bytes": page_count * page_size,
+        }
+
+    def autobench_owner_usage(self, owner_id: str) -> dict[str, Any]:
+        with contextlib.closing(self._connect()) as conn:
+            return _autobench_owner_usage(conn, owner_id)
+
+    def validate_autobench_idempotency_key(self, owner_id: str, key: str, *, now_unix_seconds: int | None = None) -> int:
+        with contextlib.closing(self._connect()) as conn:
+            return LedgerTransaction(conn).validate_autobench_idempotency_key(
+                owner_id, key, now_unix_seconds=now_unix_seconds
+            )
+
+    def _reclaim_storage(self) -> dict[str, Any]:
+        """Checkpoint WAL and run SQLite VACUUM under exclusive maintenance."""
+        with self._maintenance_lock:
+            conn = self._connect()
+            try:
+                checkpoint = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+                if checkpoint is not None and int(checkpoint[0]) != 0:
+                    return {"physical_reclaim": False, "checkpoint_busy": int(checkpoint[0])}
+                conn.execute("VACUUM")
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                return {"physical_reclaim": True}
+            except sqlite3.OperationalError as exc:
+                return {"physical_reclaim": False, "maintenance_error": type(exc).__name__}
+            finally:
+                conn.close()
+
+    def compact_autobench_history(
+        self,
+        owner_id: str,
+        *,
+        before: datetime | str | None = None,
+        max_records: int = 1000,
+    ) -> dict[str, Any]:
+        """Purge expired opted-in history, retain one owner audit aggregate."""
+        if not isinstance(owner_id, str) or not owner_id.strip():
+            raise ValueError("owner_id must be a non-empty string")
+        if isinstance(max_records, bool) or not isinstance(max_records, int) or not 1 <= max_records <= 10_000:
+            raise ValueError("max_records must be from 1 through 10000")
+        cutoff = None
+        if before is not None:
+            if isinstance(before, str):
+                try:
+                    cutoff = datetime.fromisoformat(before.replace("Z", "+00:00"))
+                except ValueError as exc:
+                    raise ValueError("before must be an ISO-8601 datetime") from exc
+            elif isinstance(before, datetime):
+                cutoff = before
+            else:
+                raise ValueError("before must be an ISO-8601 datetime")
+            if cutoff.tzinfo is None or cutoff.utcoffset() is None:
+                raise ValueError("before must be timezone-aware")
+            cutoff = cutoff.astimezone(timezone.utc)
+
+        now = datetime.now(timezone.utc)
+        now_iso = now.isoformat()
+        now_epoch = int(now.timestamp())
+        physical_before = self.storage_usage()
+        with self.transaction() as tx:
+            conn = tx._connection
+            owner_usage_before = _autobench_owner_usage(conn, owner_id)
+            rows = conn.execute("SELECT entity_id,data_json FROM entities WHERE kind='jobs' ORDER BY updated_at,entity_id").fetchall()
+            owner_autobench_ids: set[str] = set()
+            for row in rows:
+                record = json.loads(row["data_json"])
+                spec = record.get("spec")
+                if (record.get("owner", record.get("owner_id")) == owner_id
+                        and isinstance(spec, Mapping) and spec.get("retention_policy") == "autobench"):
+                    owner_autobench_ids.add(str(row["entity_id"]))
+            jobs: dict[str, dict[str, Any]] = {}
+            expiries: dict[str, int] = {}
+            for row in rows:
+                job_id = str(row["entity_id"])
+                record = json.loads(row["data_json"])
+                spec = record.get("spec")
+                if not isinstance(spec, Mapping) or spec.get("retention_policy") != "autobench":
+                    continue
+                if record.get("owner", record.get("owner_id")) != owner_id:
+                    continue
+                if str(record.get("state", "")).lower() not in {"succeeded", "failed", "cancelled"}:
+                    continue
+                if record.get("cleanup_verified") is not True:
+                    continue
+                if record.get("lease_binding") in {"supervised", "protected"} or record.get("protected") is True:
+                    continue
+                if record.get("reservation_id") is not None:
+                    continue
+                tags = spec.get("tags", ())
+                if isinstance(tags, (list, tuple, set, frozenset)) and {str(x).lower() for x in tags} & {"protected", "scheduler.protected"}:
+                    continue
+                expiry = _autobench_key_expiry(record)
+                # before can restrict deletion, never authorize an unexpired key.
+                if expiry is None or expiry > now_epoch:
+                    continue
+                updated = record.get("updated_at") or record.get("created_at")
+                if cutoff is not None:
+                    if not isinstance(updated, str):
+                        continue
+                    try:
+                        updated_at = datetime.fromisoformat(updated.replace("Z", "+00:00"))
+                    except ValueError:
+                        continue
+                    if updated_at.tzinfo is None or updated_at.astimezone(timezone.utc) >= cutoff:
+                        continue
+                lease_id = record.get("lease_id")
+                if lease_id is not None:
+                    lease_row = conn.execute("SELECT data_json FROM entities WHERE kind='lease' AND entity_id=?", (str(lease_id),)).fetchone()
+                    lease = json.loads(lease_row["data_json"]) if lease_row else None
+                    internal = isinstance(lease, Mapping) and (
+                        lease.get("internal") is True or lease.get("managed_by") == "device-scheduler" or lease.get("lease_type") == "job_internal"
+                        or lease.get("request_id") == f"job:{job_id}"
+                        or lease.get("idempotency_key") == f"job-lease:{job_id}"
+                    )
+                    if (not internal or lease.get("owner_id", lease.get("owner")) != owner_id
+                        or str(lease.get("state", "")).lower() not in {"released", "expired"}
+                        or lease.get("usage") == "supervised" or lease.get("protected") is True
+                        or lease.get("reservation_id") is not None):
+                        continue
+                jobs[job_id] = record
+                expiries[job_id] = expiry
+                if len(jobs) >= max_records:
+                    break
+
+            job_ids = set(jobs)
+            attempt_ids_by_job: dict[str, set[str]] = {job_id: set() for job_id in job_ids}
+            owner_attempts_by_job: dict[str, set[str]] = {job_id: set() for job_id in owner_autobench_ids}
+            for attempt_row in conn.execute("SELECT entity_id,data_json FROM entities WHERE kind='attempts'").fetchall():
+                attempt = json.loads(attempt_row["data_json"])
+                job_id = attempt.get("job_id")
+                if job_id in owner_autobench_ids:
+                    attempt_id = str(attempt.get("attempt_id", attempt_row["entity_id"]))
+                    owner_attempts_by_job[job_id].add(attempt_id)
+                    if job_id in job_ids:
+                        attempt_ids_by_job[job_id].add(attempt_id)
+            linked: dict[str, list[sqlite3.Row]] = {job_id: [] for job_id in job_ids}
+            operation_matches: dict[str, set[str]] = {}
+            for op in conn.execute("SELECT * FROM operations WHERE owner=?", (owner_id,)).fetchall():
+                request = json.loads(op["request_json"])
+                response = json.loads(op["response_json"]) if op["response_json"] else None
+                referenced = {
+                    job_id for job_id in owner_autobench_ids
+                    if (_autobench_mentions_job(request, {job_id} | owner_attempts_by_job[job_id])
+                        or _autobench_mentions_job(response, {job_id} | owner_attempts_by_job[job_id]))
+                }
+                for job_id in tuple(job_ids):
+                    spec = jobs[job_id].get("spec", {})
+                    key = spec.get("idempotency_key") if isinstance(spec, Mapping) else None
+                    attempt_ids = attempt_ids_by_job[job_id]
+                    start_operation = any(str(op["operation_id"]).endswith(attempt_id) for attempt_id in attempt_ids)
+                    if op["idempotency_key"] == key or start_operation or job_id in referenced:
+                        linked[job_id].append(op)
+                        operation_matches.setdefault(str(op["operation_id"]), set()).update(referenced | {job_id})
+            pending = set()
+            outbox_rows = conn.execute("SELECT outbox_id,payload_json,delivered_at FROM outbox").fetchall()
+            delivered_outbox: dict[str, set[str]] = {}
+            for row in outbox_rows:
+                payload = json.loads(row["payload_json"])
+                matched = {job_id for job_id in job_ids if _autobench_mentions_job(payload, {job_id} | attempt_ids_by_job[job_id])}
+                if matched and row["delivered_at"] is None:
+                    pending.update(matched)
+                elif matched:
+                    delivered_outbox[str(row["outbox_id"])] = matched
+            for job_id in tuple(job_ids):
+                if job_id in pending or any(op["status"] not in {"complete", "failed"} for op in linked[job_id]):
+                    jobs.pop(job_id, None)
+                    expiries.pop(job_id, None)
+                    linked.pop(job_id, None)
+            job_ids = set(jobs)
+
+            if not job_ids:
+                result = {"jobs_purged": 0, "attempts_purged": 0, "events_purged": 0,
+                          "operations_purged": 0, "receipts_purged": 0, "leases_purged": 0,
+                          "logical_payload_bytes_after": _autobench_owner_usage(conn, owner_id)["logical_payload_bytes"],
+                          "floor_expiry_unix_seconds": self._autobench_floor(conn, owner_id)}
+            else:
+                for trigger in ("events_no_update", "events_no_delete", "operation_receipts_no_update", "operation_receipts_no_delete"):
+                    conn.execute(f"DROP TRIGGER {trigger}")
+                op_ids = {
+                    op_id for op_id, matches in operation_matches.items()
+                    if matches and matches <= job_ids
+                }
+                receipts = 0
+                if op_ids:
+                    marks = ",".join("?" for _ in op_ids)
+                    receipts = int(conn.execute(f"SELECT COUNT(*) FROM operation_receipts WHERE operation_id IN ({marks})", tuple(sorted(op_ids))).fetchone()[0])
+                    conn.execute(f"DELETE FROM operation_receipts WHERE operation_id IN ({marks})", tuple(sorted(op_ids)))
+                    conn.execute(f"DELETE FROM operations WHERE operation_id IN ({marks})", tuple(sorted(op_ids)))
+                outbox_purged = 0
+                purge_outbox_ids = {
+                    outbox_id for outbox_id, matches in delivered_outbox.items()
+                    if matches & job_ids
+                }
+                if purge_outbox_ids:
+                    outbox_marks = ",".join("?" for _ in purge_outbox_ids)
+                    outbox_purged = conn.execute(
+                        f"DELETE FROM outbox WHERE outbox_id IN ({outbox_marks}) AND delivered_at IS NOT NULL",
+                        tuple(sorted(purge_outbox_ids)),
+                    ).rowcount
+                marks = ",".join("?" for _ in job_ids)
+                params = tuple(sorted(job_ids))
+                attempts = int(conn.execute(f"SELECT COUNT(*) FROM entities WHERE kind='attempts' AND json_extract(data_json,'$.job_id') IN ({marks})", params).fetchone()[0])
+                lease_ids_for_events = {
+                    str(record["lease_id"]) for record in jobs.values()
+                    if isinstance(record.get("lease_id"), str)
+                }
+                event_entity_ids = job_ids | lease_ids_for_events
+                event_marks = ",".join("?" for _ in event_entity_ids)
+                event_params = tuple(sorted(event_entity_ids))
+                events = int(conn.execute(f"SELECT COUNT(*) FROM events WHERE entity_id IN ({event_marks})", event_params).fetchone()[0])
+                conn.execute(f"DELETE FROM entities WHERE kind='attempts' AND json_extract(data_json,'$.job_id') IN ({marks})", params)
+                decisions = int(conn.execute(
+                    f"SELECT COUNT(*) FROM entities WHERE kind='decisions' AND json_extract(data_json,'$.subject_id') IN ({marks})", params
+                ).fetchone()[0])
+                conn.execute(f"DELETE FROM entities WHERE kind='decisions' AND json_extract(data_json,'$.subject_id') IN ({marks})", params)
+                conn.execute(f"DELETE FROM events WHERE entity_id IN ({event_marks})", event_params)
+                conn.execute(f"DELETE FROM entities WHERE kind='jobs' AND entity_id IN ({marks})", params)
+                # Only delivered records are purged. Pending rows were used
+                # above to reject their associated jobs from this purge.
+                leases = 0
+                for lease_id in {str(j["lease_id"]) for j in jobs.values() if j.get("lease_id") is not None}:
+                    leases += conn.execute("DELETE FROM entities WHERE kind='lease' AND entity_id=?", (lease_id,)).rowcount
+
+                prior = conn.execute("SELECT revision,data_json FROM entities WHERE kind='autobench_retention' AND entity_id=?", (owner_id,)).fetchone()
+                summary = json.loads(prior["data_json"]) if prior else {}
+                floor = max([int(summary.get("floor_expiry_unix_seconds", 0)), *expiries.values()])
+                key_hashes = sorted(hashlib.sha256(str(j.get("spec", {}).get("idempotency_key", "")).encode()).hexdigest() for j in jobs.values())
+                material = canonical_json({"owner": owner_id, "job_ids": sorted(job_ids), "key_hashes": key_hashes, "expired_at": now_iso})
+                previous_hash = str(summary.get("audit_chain_sha256", "0" * 64))
+                chain = hashlib.sha256((previous_hash + material).encode()).hexdigest()
+                audit = {"owner_id": owner_id, "floor_expiry_unix_seconds": floor,
+                         "jobs_purged_total": int(summary.get("jobs_purged_total", 0)) + len(job_ids),
+                         "last_compacted_at": now_iso, "audit_chain_sha256": chain}
+                tx.put("autobench_retention", owner_id, audit, int(prior["revision"]) if prior else None)
+                for statement in (
+                    "CREATE TRIGGER events_no_update BEFORE UPDATE ON events BEGIN SELECT RAISE(ABORT, 'events are append-only'); END",
+                    "CREATE TRIGGER events_no_delete BEFORE DELETE ON events BEGIN SELECT RAISE(ABORT, 'events are append-only'); END",
+                    "CREATE TRIGGER operation_receipts_no_update BEFORE UPDATE ON operation_receipts BEGIN SELECT RAISE(ABORT, 'receipts are append-only'); END",
+                    "CREATE TRIGGER operation_receipts_no_delete BEFORE DELETE ON operation_receipts BEGIN SELECT RAISE(ABORT, 'receipts are append-only'); END",
+                ):
+                    conn.execute(statement)
+                usage = _autobench_owner_usage(conn, owner_id)
+                result = {"jobs_purged": len(job_ids), "attempts_purged": attempts, "events_purged": events,
+                          "operations_purged": len(op_ids), "receipts_purged": receipts, "leases_purged": leases,
+                          "decisions_purged": decisions, "outbox_purged": outbox_purged,
+                          "logical_payload_bytes_after": usage["logical_payload_bytes"],
+                          "floor_expiry_unix_seconds": floor, "audit_chain_sha256": chain}
+
+        physical_after = self.storage_usage()
+        reclaim = self._reclaim_storage() if result.get("jobs_purged", 0) else {"physical_reclaim": False, "reason": "no_expired_records"}
+        physical_final = self.storage_usage()
+        result.update({"logical_payload_bytes_before": owner_usage_before["logical_payload_bytes"],
+                       "database_bytes_before": physical_before["database_bytes"],
+                       "database_bytes_after_compaction": physical_after["database_bytes"],
+                       "database_bytes_after_reclaim": physical_final["database_bytes"],
+                       "wal_bytes_after_reclaim": physical_final["wal_bytes"], **reclaim})
+        return result
+
+    @staticmethod
+    def _autobench_floor(connection: sqlite3.Connection, owner_id: str) -> int:
+        row = connection.execute("SELECT data_json FROM entities WHERE kind='autobench_retention' AND entity_id=?", (owner_id,)).fetchone()
+        return int(json.loads(row["data_json"]).get("floor_expiry_unix_seconds", 0)) if row else 0
 
     def enqueue_outbox(self, topic: str, payload: Mapping[str, Any], *, outbox_id: str | None = None) -> str:
         with self.transaction() as tx:

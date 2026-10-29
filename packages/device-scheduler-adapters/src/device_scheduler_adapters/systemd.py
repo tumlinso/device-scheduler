@@ -373,12 +373,30 @@ class SystemdExecutionAdapter:
             raise ValueError("execution arguments must be NUL-free strings")
         return list(argv)
 
-    def _unit_properties(self, spec: Any, *, runtime_max_seconds: float | None = None) -> list[str]:
+    def _unit_properties(
+        self,
+        spec: Any,
+        *,
+        runtime_max_seconds: float | None = None,
+        termination_grace_seconds: float | None = None,
+    ) -> list[str]:
+        stop_timeout = termination_grace_seconds
+        if stop_timeout is None:
+            stop_timeout = _value(spec, "termination_grace_seconds")
+        if stop_timeout is None:
+            stop_timeout = self._stop_timeout_seconds
+        if (
+            isinstance(stop_timeout, bool)
+            or not isinstance(stop_timeout, (int, float))
+            or not math.isfinite(stop_timeout)
+            or stop_timeout <= 0
+        ):
+            raise ValueError("termination_grace_seconds must be finite and positive")
         props = [
             "RemainAfterExit=yes",
             "Restart=no",
             "KillMode=control-group",
-            f"TimeoutStopSec={self._stop_timeout_seconds}s",
+            f"TimeoutStopSec={stop_timeout:g}s",
             "StandardOutput=journal",
             "StandardError=journal",
         ]
@@ -633,8 +651,15 @@ class SystemdExecutionAdapter:
             f"--description={handle['description']}",
             "--service-type=exec",
         ]
-        runtime_limit = float(spec.timeout_seconds) if context.purpose == ExecutionPurpose.JOB else None
-        for prop in self._unit_properties(resolved, runtime_max_seconds=runtime_limit):
+        runtime_limit = (
+            float(spec.kill_timeout_seconds if spec.kill_timeout_seconds is not None else spec.timeout_seconds)
+            if context.purpose == ExecutionPurpose.JOB else None
+        )
+        for prop in self._unit_properties(
+            resolved,
+            runtime_max_seconds=runtime_limit,
+            termination_grace_seconds=spec.termination_grace_seconds,
+        ):
             command.append(f"--property={prop}")
         command.append(f"--working-directory={cwd}")
         command.extend(self._environment(resolved))

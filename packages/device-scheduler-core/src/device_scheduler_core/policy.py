@@ -106,7 +106,19 @@ class WeightedFairPolicy:
         current = self._aware_now(now)
         service = service_by_owner or {}
         ranked = [self._decision(request, current, service) for request in requests]
-        return sorted(ranked, key=lambda item: (-item.score, item.request_id))
+        by_id = {self._request_id(request): request for request in requests}
+        # A fresh interactive request is a strict foreground tier. Age and
+        # owner fairness continue to rank requests within each tier, preserving
+        # the historical weighted-fair behavior for nonforeground work.
+        return sorted(
+            ranked,
+            key=lambda item: (
+                0 if item.priority_class == "interactive" else 1,
+                -item.score,
+                self._expected_duration(by_id[item.request_id]),
+                item.request_id,
+            ),
+        )
 
     def choose_next(
         self,
@@ -194,9 +206,13 @@ class WeightedFairPolicy:
                 continue
             spec = self._read(target, "spec", {})
             interruption = self._read(spec, "interruption", {})
-            if not self._read(interruption, "restart_safe", False):
-                continue
             if not self._read(interruption, "cancellation_supported", False):
+                continue
+            preemption_action = self._read(spec, "preemption_action", "restart")
+            if preemption_action == "abandon":
+                if not self._read(spec, "flexible", False):
+                    continue
+            elif not self._read(interruption, "restart_safe", False):
                 continue
             if self._priority_class(target) != "background":
                 continue
@@ -213,7 +229,7 @@ class WeightedFairPolicy:
                 or not isinstance(max_attempts, int)
                 or isinstance(attempt_count, bool)
                 or not isinstance(attempt_count, int)
-                or attempt_count >= max_attempts
+                or (attempt_count >= max_attempts and preemption_action != "abandon")
             ):
                 continue
             if would_unblock is not None:
@@ -297,8 +313,11 @@ class WeightedFairPolicy:
         return numeric
 
     def _protected_request(self, requests: Sequence[Any], now: datetime) -> Any | None:
+        foreground_present = any(self._priority_class(request) == "interactive" for request in requests)
         aged: list[tuple[datetime, str, Any]] = []
         for request in requests:
+            if foreground_present and self._priority_class(request) != "interactive":
+                continue
             enqueued = self._time_field(request, "created_at") or self._time_field(request, "enqueued_at") or self._time_field(request, "submitted_at")
             if enqueued is None:
                 continue
@@ -318,6 +337,14 @@ class WeightedFairPolicy:
         if value is None:
             raise ValueError("queued request must have request_id, job_id, or id")
         return str(value)
+
+    @classmethod
+    def _expected_duration(cls, request: Any) -> float:
+        spec = cls._read(request, "spec", {})
+        value = cls._read(spec, "expected_duration_seconds", None)
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)) or value <= 0:
+            return float("inf")
+        return float(value)
 
     @classmethod
     def _priority_class(cls, request: Any) -> str:

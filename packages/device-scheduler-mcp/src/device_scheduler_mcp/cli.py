@@ -23,9 +23,11 @@ _GROUP_COMMANDS: dict[str, dict[str, tuple[str, str | None, str | None]]] = {
     "resources": {
         "list": ("resources.list", None, None),
         "capabilities": ("resources.capabilities", None, None),
+        "forecast": ("resources.forecast", None, "request"),
     },
     "leases": {
         "request": ("leases.request", None, "request"),
+        "demand": ("leases.demand", None, None),
         "get": ("leases.get", "lease_id", None),
         "list": ("leases.list", None, None),
         "renew": ("leases.renew", "lease_id", None),
@@ -59,6 +61,7 @@ _GROUP_COMMANDS: dict[str, dict[str, tuple[str, str | None, str | None]]] = {
         "control": ("schedules.control", "schedule_id", None),
     },
     "events": {"publish": ("events.publish", None, "event")},
+    "history": {"compact": ("history.compact", None, None), "status": ("history.status", None, None)},
     "policies": {
         "explain": ("policies.explain", None, None),
         "simulate": ("policies.simulate", None, None),
@@ -77,6 +80,7 @@ _GROUP_ALIASES = {
     "handoffs": "handoff",
     "schedules": "schedule",
     "events": "event",
+    "history": "history",
     "policies": "policy",
     "admin": "admin",
 }

@@ -249,6 +249,13 @@ class PriorityClass(str, Enum):
     BACKGROUND = "background"
 
 
+class PreemptionAction(str, Enum):
+    """Disposition after a Scheduler-owned packet is safely interrupted."""
+
+    RESTART = "restart"
+    ABANDON = "abandon"
+
+
 class EnforcementLevel(str, Enum):
     ENFORCED = "enforced"
     ADVISORY = "advisory"
@@ -514,7 +521,18 @@ class JobSpec(JsonModel):
     tags: frozenset[str] = frozenset()
     priority_class: PriorityClass = PriorityClass.NORMAL
     priority: int = 50
+    flexible: bool = False
     timeout_seconds: float = 3600.0
+    # Advisory packet estimate; it affects packing/forecasting, never runtime limits.
+    expected_duration_seconds: float | None = None
+    # Packet runtime limit before systemd begins termination. `timeout_seconds`
+    # remains the legacy hard runtime field when this is omitted.
+    kill_timeout_seconds: float | None = None
+    termination_grace_seconds: float | None = None
+    preemption_action: PreemptionAction = PreemptionAction.RESTART
+    # Retention is opt-in. Only the Autobench owner-scoped maintenance path may
+    # compact records carrying this exact policy.
+    retention_policy: str | None = None
     max_attempts: int = 1
     not_before: datetime | None = None
     deadline: datetime | None = None
@@ -561,7 +579,26 @@ class JobSpec(JsonModel):
             raise ValidationError("priority_class must be interactive, normal, or background")
         if isinstance(self.priority, bool) or not isinstance(self.priority, int) or not 0 <= self.priority <= 100:
             raise ValidationError("priority must be an integer from 0 through 100")
+        if not isinstance(self.flexible, bool):
+            raise ValidationError("flexible must be a boolean")
         object.__setattr__(self, "timeout_seconds", finite_number(self.timeout_seconds, "timeout_seconds", strict=True))
+        if self.expected_duration_seconds is not None:
+            object.__setattr__(self, "expected_duration_seconds", finite_number(self.expected_duration_seconds, "expected_duration_seconds", strict=True))
+        if self.kill_timeout_seconds is not None:
+            object.__setattr__(self, "kill_timeout_seconds", finite_number(self.kill_timeout_seconds, "kill_timeout_seconds", strict=True))
+        if self.termination_grace_seconds is not None:
+            object.__setattr__(self, "termination_grace_seconds", finite_number(self.termination_grace_seconds, "termination_grace_seconds"))
+            if self.termination_grace_seconds <= 0:
+                raise ValidationError("termination_grace_seconds must be positive")
+        effective_kill_timeout = self.kill_timeout_seconds if self.kill_timeout_seconds is not None else self.timeout_seconds
+        if self.expected_duration_seconds is not None and self.expected_duration_seconds >= effective_kill_timeout:
+            raise ValidationError("expected_duration_seconds must be less than the effective kill timeout")
+        if not isinstance(self.preemption_action, (PreemptionAction, str)) or str(getattr(self.preemption_action, "value", self.preemption_action)) not in {item.value for item in PreemptionAction}:
+            raise ValidationError("preemption_action must be restart or abandon")
+        if not isinstance(self.preemption_action, PreemptionAction):
+            object.__setattr__(self, "preemption_action", PreemptionAction(self.preemption_action))
+        if self.retention_policy is not None and self.retention_policy != "autobench":
+            raise ValidationError("retention_policy must be autobench when specified")
         if isinstance(self.max_attempts, bool) or not isinstance(self.max_attempts, int) or self.max_attempts < 1:
             raise ValidationError("max_attempts must be a positive integer")
         object.__setattr__(self, "not_before", aware_datetime(self.not_before, "not_before"))

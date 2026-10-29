@@ -68,6 +68,85 @@ The scheduler remains the authority for admission, fencing and reclamation.
 The handle is convenience bookkeeping; it does not bypass grants or make
 unmanaged processes safe.
 
+## Interactive leases, background packets and forecast windows
+
+`leases.request` remains fail-fast. Interactive agents with the `leases.demand`
+grant and a priority ceiling of at least 70 can use the durable demand API; the
+Scheduler automatically interrupts only explicitly flexible background jobs
+that can contribute to the requested capacity. It grants the lease after the
+Scheduler verifies process cleanup and releases the victim lease. A demand is
+owner-scoped, idempotent by `demand_id`, and expires after one hour if still
+pending. Repeating an expired or cancelled identifier never recreates work.
+
+```python
+demand = await client.request_priority_lease_demand(
+    request={
+        "requirements": [{
+            "kind": "gpu",
+            "quantities": {"gpu_memory_bytes": 1},
+            "mode": "exclusive",
+        }],
+        "lease_ttl_seconds": 600,
+    },
+    demand_id="agent-attempt-uuid",
+    wait_seconds=5,
+)
+if demand["state"] == "pending":
+    demand = await client.wait_priority_lease_demand(
+        "agent-attempt-uuid", wait_seconds=30,
+    )
+```
+
+The CLI can invoke the same operation with a complete argument object:
+
+```sh
+device-scheduler lease demand --arguments-json \
+  '{"action":"request","demand_id":"agent-attempt-uuid","request":{"requirements":[{"kind":"gpu","quantities":{"gpu_memory_bytes":1},"mode":"exclusive"}],"lease_ttl_seconds":600}}'
+```
+
+Jobs can set `expected_duration_seconds` as a scheduling estimate. It does not
+extend or replace a runtime limit. `kill_timeout_seconds` selects the packet
+runtime limit; systemd begins stopping the process group at that limit and
+allows `termination_grace_seconds` before final kill. The bound therefore
+includes runtime limit plus stop grace. Omitting the new fields preserves the
+legacy `timeout_seconds` and host-configured stop grace. A packet that should
+be discarded after an interactive interruption sets
+`preemption_action: "abandon"`; `"restart"` remains the default and requires a
+restart-safe contract with attempts remaining. Set `flexible: true` to opt in
+to priority-demand preemption. Caller-owned reservations, protected jobs and
+unknown leases are not eligible.
+
+`resources.forecast` returns current inventory/topology, known allocations,
+queued interactive work and pending priority demands with bounded advisory
+windows (maximum horizon 600 seconds and 64 candidates). It creates no
+reservation; admission rechecks live capacity. Forecast release estimates use
+declared active-job durations only when Scheduler ownership and the active
+lease are verified. Unknown or protected leases are never treated as free at
+expiry.
+
+## Autobench history retention
+
+Autobench jobs opt in with `retention_policy: "autobench"` and an expiring key
+in this form: `autobench-v1:<expiry-unix-seconds>:<opaque-unique>`. Keep and
+reuse the same key for packet retries. The default replay window is seven days;
+explicit windows may be at most 30 days. Scheduler rejects submissions and
+replays after that expiry, including after old records have been purged.
+
+A caller with the `history.compact:autobench` grant can compact its own
+expired, terminal records using `history.compact`. Active, unknown, protected,
+non-opted-in, and other-owner records remain intact. The maintenance operation
+removes full job/attempt/event/receipt/operation details and released internal
+job leases, then runs SQLite checkpoint and VACUUM maintenance. A single small
+per-owner expiry floor and aggregate remain to prevent replay after deletion.
+
+Each owner has configurable admission limits, defaulting to 64 MiB and 10,000
+retained rows. New Autobench submissions fail closed when either limit would
+be exceeded; active or protected history that cannot yet be purged consumes
+that budget. `history.status` reports the caller's usage, configured limits,
+retention floor, and aggregate SQLite footprint. This bounds admitted history
+and reclaims file space after safe purge; it does not impose a hard quota on
+unrelated scheduler data or scratch files.
+
 ## A CPU/memory lease and job
 
 Run this with `.venv/bin/python` from this checkout, which is an approved execution root for the installed operator. For another project, provision a separately scoped token with `scripts/provision-token.py` and load its grant during an administrator-controlled restart.

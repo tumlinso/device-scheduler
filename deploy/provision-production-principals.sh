@@ -45,19 +45,19 @@ provision() {
 
 provision operator operator.token 100 \
   --actions \
-    resources.list resources.capabilities \
+    resources.list resources.capabilities resources.forecast \
     jobs.submit jobs.get jobs.list jobs.wait jobs.logs jobs.control \
-    leases.request leases.get leases.list leases.renew leases.release \
+    leases.request leases.demand leases.get leases.list leases.renew leases.release \
     backends.get backends.list \
     handoffs.get handoffs.list schedules.get schedules.list schedules.put schedules.control \
     events.publish \
     policies.explain policies.simulate \
-    admin.status admin.reconcile admin.backup \
+    admin.status admin.reconcile admin.backup history.compact history.status \
   --execution-root "$repo_root"
 
 provision project-control project-control.token 50 \
   --actions \
-    resources.list resources.capabilities \
+    resources.list resources.capabilities resources.forecast \
     leases.request leases.get leases.list leases.renew leases.release \
     leases.request:any_owner leases.read:any_owner leases.manage:any_owner \
     backends.get backends.list backends.control backends.attach \
@@ -65,11 +65,11 @@ provision project-control project-control.token 50 \
   --backend-id project-control-llama
 
 provision kda kda.token 70 \
-  --actions resources.list resources.capabilities jobs.submit jobs.get jobs.list jobs.wait jobs.logs jobs.control \
+  --actions resources.list resources.capabilities resources.forecast leases.demand jobs.submit jobs.get jobs.list jobs.wait jobs.logs jobs.control \
   --execution-root "$kda_root"
 
 provision kernelbender kernelbender.token 70 \
-  --actions resources.list resources.capabilities jobs.submit jobs.get jobs.list jobs.wait jobs.logs jobs.control \
+  --actions resources.list resources.capabilities resources.forecast leases.demand jobs.submit jobs.get jobs.list jobs.wait jobs.logs jobs.control \
   --execution-root "$kernelbender_root"
 
 printf 'Principal tokens created under %s; token values were not printed.\n' "$config_root"

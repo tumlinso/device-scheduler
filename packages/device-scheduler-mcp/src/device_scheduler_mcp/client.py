@@ -100,6 +100,30 @@ class DeviceSchedulerClient:
     async def request_lease(self, request: ResourceRequest | Mapping[str, Any]) -> dict[str, Any]:
         return await self.call("leases.request", {"request": _as_mapping(request)})
 
+    async def request_priority_lease_demand(
+        self, request: ResourceRequest | Mapping[str, Any], demand_id: str, *, wait_seconds: float = 0,
+    ) -> dict[str, Any]:
+        """Request a durable interactive lease demand with automatic safe preemption."""
+        return await self.call("leases.demand", {
+            "action": "request", "demand_id": demand_id,
+            "request": _as_mapping(request), "wait_seconds": wait_seconds,
+        })
+
+    async def get_priority_lease_demand(self, demand_id: str) -> dict[str, Any]:
+        return await self.call("leases.demand", {"action": "get", "demand_id": demand_id})
+
+    async def wait_priority_lease_demand(self, demand_id: str, *, wait_seconds: float = 30) -> dict[str, Any]:
+        return await self.call("leases.demand", {"action": "wait", "demand_id": demand_id, "wait_seconds": wait_seconds})
+
+    async def cancel_priority_lease_demand(self, demand_id: str) -> dict[str, Any]:
+        return await self.call("leases.demand", {"action": "cancel", "demand_id": demand_id})
+
+    async def forecast_resources(self, request: Mapping[str, Any], *, horizon_seconds: float = 600, max_candidates: int = 64) -> dict[str, Any]:
+        return await self.call("resources.forecast", {
+            "request": dict(request), "horizon_seconds": horizon_seconds,
+            "max_candidates": max_candidates,
+        })
+
     async def get_lease(self, lease_id: str) -> dict[str, Any]:
         return await self.call("leases.get", {"lease_id": lease_id})
 

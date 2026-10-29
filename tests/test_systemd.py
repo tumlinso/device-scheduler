@@ -143,6 +143,7 @@ def test_start_uses_deterministic_transient_unit_and_limits(tmp_path: Path) -> N
     assert "--property=RemainAfterExit=yes" in command
     assert "--property=Restart=no" in command
     assert "--property=KillMode=control-group" in command
+    assert "--property=TimeoutStopSec=15s" in command
     assert "--property=CPUQuota=175%" in command
     assert "--property=MemoryMax=4000000000" in command
     assert "--property=TasksMax=64" in command
@@ -666,3 +667,25 @@ def test_managed_process_ids_fail_closed_when_invocation_changes(tmp_path: Path)
     assert observed["state"] == "unknown"
     assert observed["process_ids"] == []
     assert observed["attempts"][0]["process_ids"] == []
+
+
+def test_packet_kill_timeout_and_grace_override_runtime_properties(tmp_path: Path) -> None:
+    fake = FakeSystemd(tmp_path / "cgroup")
+    adapter = SystemdExecutionAdapter(
+        runner=fake,
+        cgroup_root=tmp_path / "cgroup",
+        host_id="lab-host",
+        profile_resolver=lambda _profile: {
+            "argv": ["python", "-c", "pass"],
+            "working_directory": "/workspace",
+        },
+    )
+    spec = JobSpec(
+        owner_id="client:test", profile_id="profile:packet",
+        timeout_seconds=600, expected_duration_seconds=10,
+        kill_timeout_seconds=20, termination_grace_seconds=3,
+    )
+    adapter.start(spec, attempt_id="attempt:packet", execution_root=tmp_path / "runs")
+    command = fake.calls[0]
+    assert "--property=RuntimeMaxSec=20s" in command
+    assert "--property=TimeoutStopSec=3s" in command
