@@ -700,12 +700,14 @@ class SystemdExecutionAdapter:
 
     @staticmethod
     def _absolute_path_executable(argv: list[str], cwd: str) -> list[str]:
-        """Resolve slash-containing executable paths before systemd sees them.
+        """Validate slash-containing executable paths while preserving argv[0].
 
         systemd's ExecStart parser accepts an absolute path or a bare command
         name; a relative path containing a slash is not resolved against
-        WorkingDirectory. Rejecting bad targets here is important because it
-        proves that no external start request has been submitted.
+        WorkingDirectory. Resolve the target strictly for validation, but pass
+        the normalized invocation path to systemd. In particular, resolving a
+        virtual-environment interpreter symlink changes Python's environment
+        discovery and can run the base interpreter instead.
         """
         executable = argv[0]
         if not executable:
@@ -716,13 +718,14 @@ class SystemdExecutionAdapter:
         if not path.is_absolute():
             path = Path(cwd) / path
         try:
-            resolved = path.resolve(strict=True)
-            resolved.stat()
+            invocation_path = Path(os.path.abspath(path))
+            resolved_target = invocation_path.resolve(strict=True)
+            resolved_target.stat()
         except (OSError, RuntimeError) as exc:
             raise StartNotSubmitted("executable path does not resolve to an existing file") from exc
-        if not resolved.is_file() or not os.access(resolved, os.X_OK):
+        if not resolved_target.is_file() or not os.access(resolved_target, os.X_OK):
             raise StartNotSubmitted("executable path is not a runnable regular file")
-        return [str(resolved), *argv[1:]]
+        return [str(invocation_path), *argv[1:]]
 
     def fence_missing_attempt(self, *, attempt_id: str) -> Mapping[str, Any]:
         """Fence a handle-less attempt and prove its systemd unit is stopped.

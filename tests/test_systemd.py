@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import subprocess
+import sys
+import venv
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -179,6 +181,37 @@ def test_start_resolves_relative_executable_and_rejects_missing_before_submissio
             execution_root=tmp_path / "runs",
         )
     assert len(fake.calls) == before
+
+
+def test_start_preserves_virtualenv_python_symlink_for_module_imports(tmp_path: Path) -> None:
+    env_root = tmp_path / "profile-env"
+    venv.EnvBuilder(with_pip=False, symlinks=True).create(env_root)
+    interpreter = env_root / "bin" / "python"
+    assert interpreter.is_symlink()
+    site_packages = env_root / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
+    site_packages.mkdir(parents=True, exist_ok=True)
+    (site_packages / "venv_probe.py").write_text("VALUE = 'venv-import-ok'\n", encoding="utf-8")
+
+    work = tmp_path / "work"
+    work.mkdir()
+    fake = FakeSystemd(tmp_path / "cgroup")
+    adapter = SystemdExecutionAdapter(runner=fake, cgroup_root=tmp_path / "cgroup")
+    adapter.start(
+        JobSpec(
+            owner_id="client:test",
+            argv=(str(interpreter), "-c", "import venv_probe; print(venv_probe.VALUE)"),
+            working_directory=str(work),
+        ),
+        attempt_id="attempt:venv-symlink",
+        execution_root=tmp_path / "runs",
+    )
+
+    command = fake.calls[0]
+    invocation = command[command.index("--") + 1:]
+    assert invocation[0] == str(interpreter)
+    result = subprocess.run(invocation, cwd=work, text=True, capture_output=True, check=False)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "venv-import-ok"
 
 
 def test_attempt_cgroup_derivation_uses_user_manager_app_slice(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
