@@ -214,4 +214,6 @@ For a one-off job, omit the lease and put the same resource requirements directl
 
 CPU quotas and memory maxima are cgroup ceilings plus ledger admission accounting. They do not preallocate physical RAM or reserve CPU time against unmanaged host work. GPU memory budgets are admission accounting, not hardware memory enforcement. Arbitrary unmanaged CPU/memory processes cannot consume supervised leases. External leases require a trusted reclamation adapter; the built-in NVIDIA path supports exclusive GPU quiescence leases.
 
+External GPU lease request and release operations may need repeated idle observations that outlast the SDK's default network timeout. The SDK allows at least 60 seconds for these operations; a caller-configured timeout can increase that allowance up to 300 seconds.
+
 Use `job get`, `job logs`, `policy explain`, `admin status` and `admin reconcile` to inspect work. `admin reconcile` currently advances job/handoff reconciliation; periodic ticks additionally reconcile lease expiry, preemption, backend startup and schedules. Explicit process suspend/resume and arbitrary checkpoints are unsupported; safe preemption uses declared cancellation/restart contracts. Unknown execution is never permission for a blind retry or capacity reuse.

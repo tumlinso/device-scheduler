@@ -69,6 +69,10 @@ class DeviceSchedulerClient:
             if isinstance(wait_s, bool) or not isinstance(wait_s, (int, float)) or not 0 <= wait_s <= 30:
                 raise ValueError("priority lease demand wait must be from 0 through 30 seconds")
             timeout = max(timeout, float(wait_s) + 10)
+        elif operation in {"leases.request", "leases.release"}:
+            # Trusted external-lease reclamation can require repeated idle
+            # observations, so the default 30-second HTTP timeout is too short.
+            timeout = max(timeout, 60.0)
 
         http_client = self._http_client_factory(
             headers={"Authorization": f"Bearer {token}"},

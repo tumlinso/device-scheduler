@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import secrets
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import anyio
@@ -11,6 +12,7 @@ import pytest
 from mcp import ClientSession
 from types import SimpleNamespace
 
+import device_scheduler_mcp.client as client_module
 from device_scheduler_core.models import JobSpec, Principal, ResourceRequest, ResourceRequirement, ScheduleSpec
 from device_scheduler_mcp.auth import StaticTokenStore, TokenGrant
 from device_scheduler_mcp.client import DeviceSchedulerClient, DeviceSchedulerClientError, SupervisedReservation
@@ -132,6 +134,57 @@ def test_sdk_rejects_non_loopback_and_unbounded_waits(tmp_path: Path) -> None:
         asyncio.run(client.call("leases.demand", {
             "action": "wait", "demand_id": "demand-1", "wait_seconds": 31,
         }))
+
+
+def test_sdk_lease_request_and_release_allow_external_baseline_timeouts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    token_path = tmp_path / "client.token"
+    _token_file(token_path)
+    captured_timeouts: list[float] = []
+
+    class FakeHttpClient:
+        async def aclose(self) -> None:
+            pass
+
+    def http_client_factory(*, headers: dict[str, str], timeout: httpx.Timeout) -> FakeHttpClient:
+        assert headers["Authorization"].startswith("Bearer ")
+        captured_timeouts.append(timeout.read)
+        return FakeHttpClient()
+
+    @asynccontextmanager
+    async def fake_streamable_http_client(_endpoint: str, *, http_client: FakeHttpClient):
+        yield object(), object(), None
+
+    class FakeSession:
+        def __init__(self, *_streams: object) -> None:
+            pass
+
+        async def __aenter__(self) -> "FakeSession":
+            return self
+
+        async def __aexit__(self, *_args: object) -> None:
+            pass
+
+        async def initialize(self) -> None:
+            pass
+
+        async def call_tool(self, *_args: object, **_kwargs: object) -> SimpleNamespace:
+            return SimpleNamespace(isError=False, structuredContent={"ok": True}, content=[])
+
+    monkeypatch.setattr(client_module, "streamable_http_client", fake_streamable_http_client)
+    monkeypatch.setattr(client_module, "ClientSession", FakeSession)
+    client = DeviceSchedulerClient(
+        "http://127.0.0.1:8770", token_path, timeout_seconds=10,
+        http_client_factory=http_client_factory,
+    )
+
+    async def run() -> None:
+        assert await client.call("leases.request", {"request": {"usage": "external"}}) == {"ok": True}
+        assert await client.call("leases.release", {"lease_id": "lease-1"}) == {"ok": True}
+
+    asyncio.run(run())
+    assert captured_timeouts == [60.0, 60.0]
 
 
 def test_mcp_stdio_bridge_registers_and_forwards_the_same_operation_set() -> None:
