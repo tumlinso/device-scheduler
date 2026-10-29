@@ -89,6 +89,7 @@ demand = await client.request_priority_lease_demand(
             "mode": "exclusive",
         }],
         "lease_ttl_seconds": 600,
+        "usage": "external",
     },
     demand_id="agent-attempt-uuid",
     wait_seconds=5,
@@ -98,6 +99,10 @@ if demand["state"] == "pending":
         "agent-attempt-uuid", wait_seconds=30,
     )
 ```
+
+GPU demands use `external` usage, which requires the trusted NVIDIA
+quiescence/reclamation adapter. `supervised` usage is currently limited to
+managed host CPU and memory resources.
 
 The CLI can invoke the same operation with a complete argument object:
 

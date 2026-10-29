@@ -1946,6 +1946,41 @@ def test_priority_lease_demand_preempts_flexible_packet_after_verified_cleanup(t
     assert old_attempt["cleanup_verified"] is True
 
 
+def test_supervised_gpu_demand_rejected_before_persisting_or_preempting(tmp_path: Path) -> None:
+    work = tmp_path / "work"
+    work.mkdir()
+    executor = FakeExecutor()
+    executor.state = "running"
+    scheduler = _scheduler(tmp_path, executor=executor, adapters=(ObservedGpuAdapter(),))
+    gpu_req = [{
+        "kind": "gpu", "selectors": {"resource_id": "gpu:host:GPU-test"},
+        "quantities": {"gpu_memory_bytes": 1}, "mode": "exclusive",
+    }]
+    background = scheduler.submit_job({
+        "owner_id": "agent:one", "argv": ["/usr/bin/sleep", "60"],
+        "working_directory": str(work), "resources": gpu_req,
+        "priority_class": "background", "flexible": True,
+        "max_attempts": 2,
+        "interruption": {"restart_safe": True, "cancellation_supported": True},
+    }, "agent:one", "background:supervised-gpu-rejected")
+    scheduler.tick()
+    assert scheduler.get_job(background["id"])["state"] == "running"
+
+    with pytest.raises(ValidationError, match="GPU lease demands must use external usage"):
+        scheduler.dispatch("leases.demand", {
+            "action": "request",
+            "demand_id": "interactive:supervised-gpu-rejected",
+            "request": {
+                "requirements": gpu_req,
+                "lease_ttl_seconds": 600,
+                "usage": "supervised",
+            },
+        }, _principal("leases.demand", "leases.request", "leases.release", max_priority=70))
+
+    assert scheduler.ledger.list("lease_demands") == []
+    assert scheduler.get_job(background["id"])["state"] == "running"
+
+
 def test_priority_lease_demand_abandons_final_single_attempt_when_declared(tmp_path: Path) -> None:
     work = tmp_path / "work"
     work.mkdir()

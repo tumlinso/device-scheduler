@@ -926,6 +926,14 @@ class Scheduler:
             request = ResourceRequest.from_dict(data)
             if request.owner_id != actor.principal_id and not self._has(actor, "leases.demand:any_owner"):
                 raise PermissionDeniedError("priority lease demand owner must match the authenticated principal")
+            if request.usage == LeaseUsage.SUPERVISED and any(
+                requirement.kind.casefold() in _GPU_KINDS
+                for requirement in request.requirements
+            ):
+                raise ValidationError(
+                    "supervised lease demands support only managed host CPU and memory; "
+                    "GPU lease demands must use external usage"
+                )
             with self._lock:
                 record = self.ledger.get("lease_demands", key)
                 if record is None:
