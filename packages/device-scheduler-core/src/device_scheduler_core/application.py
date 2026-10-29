@@ -60,6 +60,7 @@ from .observability import (
 from .policy import WeightedFairPolicy
 from .scheduling import (
     ScheduleCoordinator,
+    _calendar_occurrences,
     dependencies_ready,
     event_ready,
     scheduled_job_ready,
@@ -1144,7 +1145,7 @@ class Scheduler:
             if lease_state in {LeaseState.ACTIVE.value, LeaseState.UNKNOWN.value, LeaseState.RECLAIMING.value, LeaseState.RELEASE_REQUESTED.value}:
                 for allocation in lease_data.get("allocations", ()):
                     current_allocations.append({"resource_id": allocation.get("resource_id"), "quantities": allocation.get("quantities", {}), "lease_state": lease_state})
-        active_job_release: dict[str, float] = {}
+        active_job_lease_release: dict[str, float] = {}
         for job in self.ledger.list("jobs"):
             if _state(job.get("state")) != "running" or not job.get("lease_id"):
                 continue
@@ -1160,15 +1161,15 @@ class Scheduler:
             if lease.get("owner_id") != job.get("owner") or lease.get("state") != LeaseState.ACTIVE.value or lease.get("reservation_id"):
                 continue
             remaining = max(0.0, float(spec.expected_duration_seconds) - (now - started).total_seconds())
-            for allocation in lease.get("allocations", ()):
-                rid = str(allocation.get("resource_id"))
-                active_job_release[rid] = min(active_job_release.get(rid, float("inf")), remaining)
+            active_job_lease_release[str(lease["lease_id"])] = remaining
+        current_placement: tuple[Any, ...] = ()
         try:
-            whole_bundle_fits = bool(self.allocator.preview_allocation(request.requirements))
+            current_placement = tuple(self.allocator.preview_allocation(request.requirements))
         except ConflictError:
-            whole_bundle_fits = False
+            pass
         except (UnsupportedCapabilityError, AttributeError):
-            whole_bundle_fits = False
+            pass
+        whole_bundle_fits = bool(current_placement)
         queue_count = sum(
             1 for job in self.ledger.list("jobs")
             if _state(job.get("state")) in {"queued", "blocked"}
@@ -1184,35 +1185,191 @@ class Scheduler:
             for item in self.ledger.list("schedules")
             if _state(item.get("state")) == "active"
         ][:limit]
-        for requirement_index, requirement in enumerate(request.requirements):
-            compatible = []
+        compatible_resource_ids: set[str] = set()
+        for requirement in request.requirements:
             for item in resources:
                 resource_data = item.get("resource", item) if isinstance(item, Mapping) else {}
-                if not isinstance(resource_data, Mapping) or resource_data.get("kind") != requirement.kind:
+                if not isinstance(resource_data, Mapping):
                     continue
                 if item.get("available") is False:
                     continue
                 resource = Resource.from_dict(resource_data)
-                if any(resource.attributes.get(key) != value for key, value in requirement.selectors.items()):
+                if not _requirement_matches_resource(requirement, resource):
                     continue
                 if any(float(resource.capacities.get(key, 0)) < float(value) for key, value in requirement.quantities.items()):
                     continue
-                compatible.append(resource)
-            releases = [active_job_release[item.resource_id] for item in compatible if item.resource_id in active_job_release]
-            earliest_offset = 0.0 if whole_bundle_fits else (min(releases) if releases else float(horizon))
-            feasible_window = whole_bundle_fits or bool(releases)
-            candidates.append({
-                "candidate_id": f"requirement-{requirement_index}",
-                "resource_ids": [item.resource_id for item in compatible],
-                "earliest_start": _iso(now + timedelta(seconds=min(earliest_offset, float(horizon)))),
-                "latest_start": _iso(now + timedelta(seconds=float(horizon))),
-                "expected_release": _iso(now + timedelta(seconds=earliest_offset)) if releases and earliest_offset <= horizon else None,
-                "uncertainty_seconds": float(horizon if not releases else min(float(horizon), max(1.0, earliest_offset * 0.5))),
-                "feasible_now": whole_bundle_fits and bool(compatible),
-                "blocking_reasons": [] if feasible_window else (["no_compatible_observed_capacity"] if not compatible else ["capacity_or_protected_claims"]),
-            })
-            if len(candidates) >= limit:
-                break
+                compatible_resource_ids.add(resource.resource_id)
+
+        selected_placement = current_placement
+        earliest_offset = 0.0
+        expected_release = None
+        window_basis = "forecast_horizon_only"
+        if not selected_placement:
+            ignored: list[str] = []
+            for lease_id, release_seconds in sorted(active_job_lease_release.items(), key=lambda item: (item[1], item[0])):
+                if release_seconds > float(horizon):
+                    break
+                ignored.append(lease_id)
+                try:
+                    future = tuple(self.allocator.preview_allocation(request.requirements, ignore_lease_ids=ignored))
+                except (ConflictError, UnsupportedCapabilityError, AttributeError):
+                    continue
+                if future:
+                    selected_placement = future
+                    earliest_offset = max(active_job_lease_release[item] for item in ignored)
+                    expected_release = _iso(now + timedelta(seconds=earliest_offset))
+                    window_basis = "verified_active_job_release"
+                    break
+
+        feasible_now = bool(current_placement)
+        projected = bool(selected_placement)
+        earliest_start = _iso(now + timedelta(seconds=earliest_offset)) if projected else None
+        horizon_end = now + timedelta(seconds=float(horizon))
+        available_until_time = horizon_end if projected else None
+        selected_ids = {item.resource_id for item in selected_placement}
+        selected_domains = {
+            domain for item in resources
+            for resource_data in [item.get("resource", item) if isinstance(item, Mapping) else {}]
+            if isinstance(resource_data, Mapping)
+            for resource in [Resource.from_dict(resource_data)]
+            if resource.resource_id in selected_ids
+            for domain in resource.conflict_domains
+        }
+        selected_kinds = {
+            resource.kind.casefold()
+            for item in resources
+            for resource_data in [item.get("resource", item) if isinstance(item, Mapping) else {}]
+            if isinstance(resource_data, Mapping)
+            for resource in [Resource.from_dict(resource_data)]
+            if resource.resource_id in selected_ids
+        }
+
+        def request_overlaps_selected(raw_requirements: Any) -> bool:
+            if not isinstance(raw_requirements, (list, tuple)) or not raw_requirements:
+                return True
+            for raw_requirement in raw_requirements:
+                if not isinstance(raw_requirement, Mapping):
+                    return True
+                requirement = ResourceRequirement.from_dict(raw_requirement)
+                known_matching_id = False
+                for item in resources:
+                    resource_data = item.get("resource", item) if isinstance(item, Mapping) else {}
+                    if not isinstance(resource_data, Mapping):
+                        continue
+                    resource = Resource.from_dict(resource_data)
+                    matches_requirement = _requirement_matches_resource(requirement, resource)
+                    known_matching_id |= matches_requirement
+                    if (item.get("available") is False or not matches_requirement
+                            or any(float(resource.capacities.get(key, 0)) < float(value)
+                                   for key, value in requirement.quantities.items())):
+                        continue
+                    if resource.resource_id in selected_ids or selected_domains.intersection(resource.conflict_domains):
+                        return True
+                if (requirement.kind.casefold() in selected_kinds and not known_matching_id):
+                    return True
+            return False
+
+        next_interactive_start: datetime | None = None
+        for job in self.ledger.list("jobs"):
+            if _state(job.get("state")) not in {"queued", "blocked"}:
+                continue
+            raw_spec = job.get("spec")
+            if not isinstance(raw_spec, Mapping) or _state(raw_spec.get("priority_class")) != "interactive":
+                continue
+            try:
+                spec = JobSpec.from_dict(raw_spec)
+                starts = _optional_time(spec.not_before) or now
+            except (SchedulerError, TypeError, ValueError):
+                starts = now
+                raw_spec = {}
+            if starts <= horizon_end and request_overlaps_selected(raw_spec.get("resources")):
+                next_interactive_start = min(next_interactive_start, starts) if next_interactive_start else starts
+
+        for demand in self.ledger.list("lease_demands"):
+            if demand.get("state") != "pending":
+                continue
+            request_data = demand.get("request")
+            requirements = request_data.get("requirements") if isinstance(request_data, Mapping) else None
+            if request_overlaps_selected(requirements):
+                next_interactive_start = min(next_interactive_start, now) if next_interactive_start else now
+
+        for schedule in self.ledger.list("schedules"):
+            if _state(schedule.get("state")) != "active":
+                continue
+            raw_schedule = schedule.get("spec")
+            if not isinstance(raw_schedule, Mapping):
+                next_interactive_start = min(next_interactive_start, now) if next_interactive_start else now
+                continue
+            try:
+                schedule_spec = ScheduleSpec.from_dict(raw_schedule)
+                scheduled_job = schedule_spec.job
+            except (SchedulerError, TypeError, ValueError):
+                # An active schedule we cannot inspect cannot establish a safe
+                # background placement window.
+                next_interactive_start = min(next_interactive_start, now) if next_interactive_start else now
+                continue
+            if _state(scheduled_job.priority_class) != "interactive":
+                continue
+            starts: list[datetime] = []
+            for occurrence in schedule.get("pending_occurrences", ()):
+                if not isinstance(occurrence, Mapping) or not occurrence.get("nominal_at"):
+                    continue
+                try:
+                    starts.append(_parse_time(occurrence["nominal_at"], "schedule occurrence"))
+                except ValidationError:
+                    starts.append(now)
+            if schedule_spec.interval_seconds is not None:
+                try:
+                    anchor = _parse_time(schedule.get("anchor_at"), "schedule anchor")
+                    last = _parse_time(schedule.get("last_nominal_at"), "schedule cursor")
+                    index = max(
+                        math.floor((now - anchor).total_seconds() / schedule_spec.interval_seconds) + 1,
+                        math.floor((last - anchor).total_seconds() / schedule_spec.interval_seconds) + 1,
+                    )
+                    starts.append(anchor + timedelta(seconds=index * schedule_spec.interval_seconds))
+                except (ValidationError, TypeError, ValueError, OverflowError):
+                    starts.append(now)
+            elif schedule_spec.calendar_expression is not None and schedule_spec.timezone is not None:
+                try:
+                    occurrences, _older = _calendar_occurrences(
+                        schedule_spec.calendar_expression, schedule_spec.timezone, now,
+                        horizon_end, limit=100,
+                    )
+                    starts.extend(occurrences)
+                except (SchedulerError, TypeError, ValueError):
+                    starts.append(now)
+            elif schedule_spec.event_trigger is not None and not starts:
+                # An interactive event schedule has no predictable next event;
+                # it cannot justify a longer background availability window.
+                starts.append(now)
+            for starts_at in starts:
+                if starts_at <= horizon_end and request_overlaps_selected(scheduled_job.resources):
+                    next_interactive_start = min(next_interactive_start, starts_at) if next_interactive_start else starts_at
+
+        if projected and next_interactive_start is not None:
+            available_until_time = min(available_until_time, next_interactive_start)
+        available_until = _iso(available_until_time) if projected and available_until_time is not None else None
+        start_uncertainty = 0.0 if feasible_now else min(float(horizon), max(1.0, earliest_offset * 0.5))
+        window_seconds = max(0.0, (available_until_time - now).total_seconds() - earliest_offset - start_uncertainty) if projected and available_until_time is not None else 0.0
+        window_end_basis = "next_known_interactive_job" if next_interactive_start is not None and available_until_time == next_interactive_start else "forecast_horizon_only"
+        candidates.append({
+            "candidate_id": "atomic-request",
+            "resource_ids": sorted({item.resource_id for item in selected_placement}),
+            "allocations": [item.to_dict() for item in selected_placement],
+            "compatible_resource_ids": sorted(compatible_resource_ids),
+            "earliest_start": earliest_start,
+            "available_until": available_until,
+            "window_seconds": window_seconds,
+            "window_end_basis": window_end_basis,
+            "latest_start": _iso(now + timedelta(seconds=float(horizon))),
+            "expected_release": expected_release,
+            "uncertainty_seconds": start_uncertainty,
+            "feasible_now": feasible_now,
+            "feasible": feasible_now,
+            "projected_feasible": projected,
+            "window_basis": window_basis if projected else None,
+            "blocking_reasons": [] if projected else (["no_compatible_observed_capacity"] if not compatible_resource_ids else ["capacity_or_protected_claims"]),
+        })
         return {
             "generated_at": _iso(now), "horizon_seconds": float(horizon),
             "current_resources": [
@@ -1225,6 +1382,7 @@ class Scheduler:
             "known_pending_priority_demands": pending_demand_count,
             "known_schedules": known_schedules,
             "candidates": candidates[:limit], "advisory_only": True,
+            "window_semantics": "available_until is bounded by the forecast horizon and any known overlapping future interactive job, not a reservation or guarantee; expected_release is a start-time estimate only",
         }
 
     def _external_lease_reclamation_path(

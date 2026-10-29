@@ -1833,6 +1833,135 @@ def test_priority_lease_demand_is_idempotent_and_forecast_does_not_reserve(tmp_p
     assert len(scheduler.allocator.list_leases()) == count_before
 
 
+def test_resource_forecast_returns_atomic_selector_placement_and_window_semantics(tmp_path: Path) -> None:
+    scheduler = _scheduler(tmp_path, adapters=(ObservedGpuAdapter(),))
+    scheduler.allocator.reconcile_resource_inventory("test.host", [
+        Resource("host:local:cpu", "host:local", "cpu", {"cores": 16}),
+        Resource("host:local:memory", "host:local", "memory", {"bytes": 32 * 1024**3}),
+    ])
+    requirements = [
+        {"kind": "cpu", "selectors": {"resource_id": "host:local:cpu"}, "quantities": {"cores": 2}},
+        {"kind": "memory", "selectors": {"resource_id": "host:local:memory"}, "quantities": {"bytes": 2 * 1024**3}},
+        {"kind": "gpu", "selectors": {"resource_id": "gpu:host:GPU-test"},
+         "quantities": {"gpu_memory_bytes": 512 * 1024**2}, "mode": "exclusive"},
+    ]
+    before = len(scheduler.allocator.list_leases())
+    forecast = scheduler.dispatch("resources.forecast", {
+        "request": {"requirements": requirements, "lease_ttl_seconds": 600},
+        "horizon_seconds": 600,
+    }, _principal("resources.forecast"))
+    assert len(scheduler.allocator.list_leases()) == before
+    candidate, = forecast["candidates"]
+    assert candidate["candidate_id"] == "atomic-request"
+    assert candidate["feasible_now"] is True
+    assert candidate["feasible"] is True
+    assert set(candidate["resource_ids"]) == {
+        "host:local:cpu", "host:local:memory", "gpu:host:GPU-test",
+    }
+    assert len(candidate["allocations"]) == 3
+    assert candidate["earliest_start"] == forecast["generated_at"]
+    assert candidate["available_until"] > candidate["earliest_start"]
+    assert candidate["window_seconds"] == 600
+    assert candidate["window_basis"] == "forecast_horizon_only"
+    assert "not a reservation" in forecast["window_semantics"]
+
+
+def test_resource_forecast_never_returns_partial_bundle_as_candidate(tmp_path: Path) -> None:
+    scheduler = _scheduler(tmp_path, adapters=(ObservedGpuAdapter(),))
+    scheduler.allocator.reconcile_resource_inventory("test.host", [
+        Resource("host:local:cpu", "host:local", "cpu", {"cores": 16}),
+        Resource("host:local:memory", "host:local", "memory", {"bytes": 32 * 1024**3}),
+    ])
+    requirements = [
+        {"kind": "cpu", "selectors": {"resource_id": "host:local:cpu"}, "quantities": {"cores": 2}},
+        {"kind": "memory", "selectors": {"resource_id": "host:local:memory"}, "quantities": {"bytes": 2 * 1024**3}},
+        {"kind": "gpu", "selectors": {"resource_id": "gpu:host:missing"},
+         "quantities": {"gpu_memory_bytes": 512 * 1024**2}, "mode": "exclusive"},
+    ]
+    forecast = scheduler.dispatch("resources.forecast", {
+        "request": {"requirements": requirements, "lease_ttl_seconds": 600},
+    }, _principal("resources.forecast"))
+    candidate, = forecast["candidates"]
+    assert candidate["feasible_now"] is False
+    assert candidate["feasible"] is False
+    assert candidate["resource_ids"] == []
+    assert candidate["available_until"] is None
+
+
+def test_resource_forecast_separates_expected_release_start_from_window_end(tmp_path: Path) -> None:
+    scheduler = _scheduler(tmp_path, adapters=(ObservedGpuAdapter(),))
+    scheduler._discover_resources()
+    now = FakeClock().now().isoformat()
+    lease = scheduler.allocator.request_lease({
+        "request_id": "job:profile-job", "owner_id": "agent:one", "lease_ttl_seconds": 600,
+        "idempotency_key": "job-lease:profile-job",
+        "requirements": [{
+            "kind": "gpu", "selectors": {"resource_id": "gpu:host:GPU-test"},
+            "quantities": {"gpu_memory_bytes": 1}, "mode": "exclusive",
+        }],
+    })
+    scheduler.ledger.put("attempts", "attempt:profile-job", {
+        "attempt_id": "attempt:profile-job", "job_id": "profile-job", "state": "running",
+        "started_at": now,
+    })
+    scheduler.ledger.put("jobs", "profile-job", {
+        "job_id": "profile-job", "owner": "agent:one", "owner_id": "agent:one",
+        "state": "running", "attempt_id": "attempt:profile-job", "lease_id": lease.lease_id,
+        "spec": {"owner_id": "agent:one", "argv": ["/usr/bin/true"],
+                 "working_directory": str(tmp_path), "expected_duration_seconds": 60},
+    })
+    forecast = scheduler.dispatch("resources.forecast", {
+        "request": {"requirements": [{
+            "kind": "gpu", "selectors": {"resource_id": "gpu:host:GPU-test"},
+            "quantities": {"gpu_memory_bytes": 1}, "mode": "exclusive",
+        }], "lease_ttl_seconds": 600},
+        "horizon_seconds": 600,
+    }, _principal("resources.forecast"))
+    candidate, = forecast["candidates"]
+    assert candidate["feasible_now"] is False
+    assert candidate["projected_feasible"] is True
+    assert candidate["resource_ids"] == ["gpu:host:GPU-test"]
+    assert candidate["expected_release"] == candidate["earliest_start"]
+    assert candidate["available_until"] != candidate["expected_release"]
+    assert candidate["window_seconds"] < 600
+    assert candidate["window_basis"] == "verified_active_job_release"
+
+
+def test_resource_forecast_shortens_atomic_window_for_future_interactive_job(tmp_path: Path) -> None:
+    scheduler = _scheduler(tmp_path, adapters=(ObservedGpuAdapter(),))
+    scheduler._discover_resources()
+    actor = _principal("jobs.submit", "resources.forecast", roots=(tmp_path,), max_priority=90)
+    future = (NOW + timedelta(seconds=10)).isoformat()
+    future_job = scheduler.dispatch("jobs.submit", {
+        "idempotency_key": "interactive-at-10s",
+        "spec": {
+            "owner_id": "agent:one", "argv": ["/usr/bin/true"],
+            "working_directory": str(tmp_path), "priority_class": "interactive",
+            "priority": 90, "not_before": future,
+            "resources": [{
+                "kind": "gpu", "selectors": {"resource_id": "gpu:host:GPU-test"},
+                "quantities": {"gpu_memory_bytes": 1}, "mode": "exclusive",
+            }],
+        },
+    }, actor)
+    assert future_job["state"] == "queued"
+    assert future_job["spec"]["priority_class"] == "interactive"
+    forecast = scheduler.dispatch("resources.forecast", {
+        "request": {"requirements": [{
+            "kind": "gpu", "selectors": {"resource_id": "gpu:host:GPU-test"},
+            "quantities": {"gpu_memory_bytes": 1}, "mode": "exclusive",
+        }], "lease_ttl_seconds": 600},
+        "horizon_seconds": 600,
+    }, actor)
+    candidate, = forecast["candidates"]
+    assert candidate["feasible_now"] is True
+    assert candidate["window_end_basis"] == "next_known_interactive_job"
+    assert datetime.fromisoformat(candidate["available_until"].replace("Z", "+00:00")) == NOW + timedelta(seconds=10)
+    assert 9.9 <= candidate["window_seconds"] <= 10.1
+    assert candidate["window_seconds"] >= 5
+    assert candidate["window_seconds"] < 30
+
+
 def test_cancel_serializes_with_inflight_priority_demand_grant(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     scheduler = _scheduler(tmp_path, adapters=(ObservedGpuAdapter(),))
     actor = _principal("leases.demand", "leases.request", "leases.release", max_priority=70)

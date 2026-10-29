@@ -118,11 +118,20 @@ unknown leases are not eligible.
 
 `resources.forecast` returns current inventory/topology, known allocations,
 queued interactive work and pending priority demands with bounded advisory
-windows (maximum horizon 600 seconds and 64 candidates). It creates no
-reservation; admission rechecks live capacity. Forecast release estimates use
-declared active-job durations only when Scheduler ownership and the active
-lease are verified. Unknown or protected leases are never treated as free at
-expiry.
+windows (maximum horizon 600 seconds and 64 candidates). Each candidate is an
+atomic placement for the complete request, with the resource IDs and
+allocations selected by the allocator. `feasible_now` means the complete
+placement fits a live admission preview. `expected_release` and
+`earliest_start` are start-time estimates; `available_until` is bounded by the
+forecast horizon and the next known overlapping interactive job or schedule.
+It is not a reservation or promise that capacity remains free. The
+`window_seconds` field is the advisory interval from estimated start to that
+bound, reduced by the expected-release uncertainty. Clients should submit only when a fresh forecast says
+`feasible_now` and the packet runtime plus cleanup allowance fits that
+interval. A future-only placement is wait guidance; reforecast before
+submitting it. Forecast release estimates use declared active-job durations
+only when Scheduler ownership and the active lease are verified. Unknown or
+protected leases are never treated as free at expiry.
 
 ## Autobench history retention
 
